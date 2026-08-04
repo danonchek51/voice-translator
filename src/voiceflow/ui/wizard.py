@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from time import monotonic
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFileDialog,
@@ -29,18 +30,27 @@ from PySide6.QtWidgets import (
     QWizardPage,
 )
 
+from voiceflow.core.models.catalog import ModelSpec
 from voiceflow.core.models.manager import DownloadPlan, ModelManager
 from voiceflow.core.models.presets import PresetSpec, apply_preset, list_presets
 from voiceflow.core.settings.store import SettingsStore
+from voiceflow.ui.formatting import human_duration as _human_duration
 from voiceflow.ui.formatting import human_size as _human_size
 
 logger = logging.getLogger(__name__)
 
 
+#: Через столько без прироста байт загрузка считается остановившейся.
+STALL_SECONDS = 90.0
+
+#: Как часто опрашивается размер скачанного.
+POLL_MS = 500
+
+
 class _DownloadWorker(QThread):
     """Загрузка в отдельном потоке: окно не должно замирать на гигабайтах."""
 
-    progressed = Signal(str, float)
+    model_started = Signal(str, int, int)
     succeeded = Signal()
     failed = Signal(str)
 
@@ -53,7 +63,9 @@ class _DownloadWorker(QThread):
         try:
             self._manager.download_missing(
                 self._preset,
-                progress=lambda model_id, value: self.progressed.emit(model_id, value),
+                on_model=lambda spec, index, count: self.model_started.emit(
+                    spec.id, index, count
+                ),
             )
         except Exception as exc:
             logger.exception("Загрузка моделей прервана")
@@ -137,6 +149,19 @@ class DownloadPage(QWizardPage):
         self._manager = manager
         self._preset_provider = preset_provider
         self._worker: _DownloadWorker | None = None
+
+        # Библиотека Hugging Face не сообщает прогресс наружу, поэтому объём
+        # скачанного измеряется по файлам на диске.
+        self._watch: ModelSpec | None = None
+        self._watch_index = 0
+        self._watch_count = 0
+        self._watch_started = 0.0
+        self._watch_from = 0
+        self._last_growth = 0.0
+        self._last_bytes = 0
+        self._timer = QTimer(self)
+        self._timer.setInterval(POLL_MS)
+        self._timer.timeout.connect(self._poll_progress)
 
         self.setTitle("Модели")
         self.setSubTitle(
@@ -236,27 +261,79 @@ class DownloadPage(QWizardPage):
         if self._worker is not None:
             return
         worker = _DownloadWorker(self._manager, self._preset())
-        worker.progressed.connect(self._on_progress)
+        worker.model_started.connect(self._on_model_started)
         worker.succeeded.connect(self._on_success)
         worker.failed.connect(self._on_failure)
         worker.finished.connect(self._on_worker_finished)
         self._worker = worker
         self._set_busy(True)
+        self._status.setText("Готовлюсь к загрузке…")
         worker.start()
 
-    def _on_progress(self, model_id: str, value: float) -> None:
-        self._status.setText(f"Загружается {model_id}")
-        self._progress.setValue(int(value * 100))
+    def _on_model_started(self, model_id: str, index: int, count: int) -> None:
+        spec = self._manager.catalog.by_id(model_id)
+        self._watch = spec
+        self._watch_index = index
+        self._watch_count = count
+        now = monotonic()
+        self._watch_started = now
+        self._last_growth = now
+        self._watch_from = self._manager.downloaded_bytes(spec) if spec else 0
+        self._last_bytes = self._watch_from
+        self._progress.setValue(0)
+        self._timer.start()
+
+    def _poll_progress(self) -> None:
+        """Показывает объём, скорость и остаток по файлам на диске."""
+        spec = self._watch
+        if spec is None:
+            return
+
+        done = self._manager.downloaded_bytes(spec)
+        now = monotonic()
+        if done > self._last_bytes:
+            self._last_bytes = done
+            self._last_growth = now
+
+        total = spec.size_bytes
+        self._progress.setValue(min(100, int(done * 100 / total)) if total else 0)
+
+        prefix = f"Модель {self._watch_index} из {self._watch_count}"
+        line = f"{prefix}: {spec.title} — {_human_size(done)} из {_human_size(total)}"
+
+        elapsed = now - self._watch_started
+        speed = (done - self._watch_from) / elapsed if elapsed > 1.0 else 0.0
+        if speed > 1024:
+            line = f"{line}, {_human_size(int(speed))}/с"
+            remaining = total - done
+            if remaining > 0:
+                line = f"{line}, осталось {_human_duration(int(remaining / speed * 1000))}"
+
+        idle = now - self._last_growth
+        if idle > STALL_SECONDS:
+            line = (
+                f"{line}\nЗагрузка не двигается уже {_human_duration(int(idle * 1000))}. "
+                "Проверьте соединение: нажмите «Отмена» и запустите загрузку заново, "
+                "она продолжится с этого места."
+            )
+        self._status.setText(line)
 
     def _on_success(self) -> None:
+        self._stop_watching()
         self._status.setText("Загрузка завершена.")
 
     def _on_failure(self, message: str) -> None:
+        self._stop_watching()
         self._status.setText(f"Загрузка прервана: {message}")
         QMessageBox.warning(self, "Загрузка моделей", message)
 
+    def _stop_watching(self) -> None:
+        self._timer.stop()
+        self._watch = None
+
     def _on_worker_finished(self) -> None:
         self._worker = None
+        self._stop_watching()
         self._set_busy(False)
         self._refresh()
 

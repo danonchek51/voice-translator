@@ -17,6 +17,19 @@ Write-Host "Готовлю окружение сборки..." -ForegroundColor 
 uv sync --group dev --extra asr
 uv pip install pyinstaller
 
+# В portable-режиме настройки, история и модели лежат в userdata рядом с
+# исполняемым файлом. Пересборка не должна их уничтожать: там могут быть
+# гигабайты загруженных моделей.
+$UserData = Join-Path $DistDir "userdata"
+$Stash = Join-Path $Root "dist\userdata-stash"
+$stashed = $false
+if (Test-Path $UserData) {
+    if (Test-Path $Stash) { Remove-Item -Recurse -Force $Stash }
+    Write-Host "Сохраняю userdata на время сборки..." -ForegroundColor Cyan
+    Move-Item $UserData $Stash
+    $stashed = $true
+}
+
 if (Test-Path $DistDir) { Remove-Item -Recurse -Force $DistDir }
 if (Test-Path $Archive) { Remove-Item -Force $Archive }
 
@@ -51,7 +64,13 @@ Copy-Item (Join-Path $Root "README.md") $DistDir -Force
 Copy-Item (Join-Path $Root "LICENSE") $DistDir -Force
 
 Write-Host "Упаковываю архив..." -ForegroundColor Cyan
+# Архив собирается до возврата userdata: модели и личные данные в него не идут.
 Compress-Archive -Path (Join-Path $DistDir "*") -DestinationPath $Archive
+
+if ($stashed) {
+    Write-Host "Возвращаю userdata..." -ForegroundColor Cyan
+    Move-Item $Stash $UserData
+}
 
 $size = (Get-Item $Archive).Length / 1MB
 Write-Host ""

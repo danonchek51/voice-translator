@@ -29,7 +29,7 @@ from voiceflow.core.state import AppState
 from voiceflow.platform.base import get_window_styler
 from voiceflow.ui import theme
 from voiceflow.ui.geometry import Placement, ScreenRect, clamp_to_screen, resolve_placement
-from voiceflow.ui.widgets.level_meter import LevelMeter
+from voiceflow.ui.widgets.wave_meter import WaveMeter
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ class OverlayWindow(QWidget):
         self._label.setStyleSheet(f"color: {theme.TEXT}; background: transparent;")
         self._label.setObjectName("overlayLabel")
 
-        self._meter = LevelMeter(self)
+        self._meter = WaveMeter(self)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._label)
@@ -154,7 +154,7 @@ class OverlayWindow(QWidget):
         font.setPointSizeF(theme.BASE_FONT_PT * self._scale / 100.0)
         self._label.setFont(font)
         self._label.setFixedHeight(theme.scaled(16, self._scale))
-        self._meter.setFixedHeight(theme.scaled(5, self._scale))
+        self._meter.setFixedHeight(theme.scaled(theme.BASE_WAVE_HEIGHT, self._scale))
 
     def restore_position(self, settings: OverlaySettings) -> None:
         """Возвращает плашку туда, где она была, с проверкой на мониторы."""

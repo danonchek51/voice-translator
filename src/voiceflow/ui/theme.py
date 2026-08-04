@@ -47,9 +47,12 @@ def processing_label(step_id: str) -> str:
 
 #: Базовые размеры при масштабе 100 %.
 BASE_WIDTH = 196
-BASE_HEIGHT = 46
+#: Высота увеличена под волну: полоске хватало пяти точек, волне нужно место,
+#: иначе колебания не видны.
+BASE_HEIGHT = 54
 BASE_RADIUS = 14
 BASE_FONT_PT = 9
+BASE_WAVE_HEIGHT = 18
 
 BACKGROUND = PALETTE.surface
 BORDER = PALETTE.line

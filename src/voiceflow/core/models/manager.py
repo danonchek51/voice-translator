@@ -27,6 +27,9 @@ logger = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[str, float], None]
 
+#: Уведомление о начале загрузки модели: сама модель, её номер и всего штук.
+ModelCallback = Callable[["ModelSpec", int, int], None]
+
 
 class ModelDownloadError(RuntimeError):
     """Загрузка не удалась. Сообщение предназначено пользователю."""
@@ -119,6 +122,25 @@ class ModelManager:
             backend_available=spec.backend_available(),
             size_on_disk=self._size_on_disk(spec) if installed else 0,
         )
+
+    def downloaded_bytes(self, spec: ModelSpec) -> int:
+        """Сколько байт модели уже лежит на диске, считая незавершённые файлы.
+
+        На этом строится индикатор загрузки: библиотека Hugging Face не
+        сообщает прогресс наружу, а размер файлов — сообщает.
+        """
+        if spec.kind == "hub":
+            return _payload_size(_hub_cache_root() / spec.cache_folder_name)
+        if spec.kind == "whisper":
+            return _payload_size(paths.whisper_models_dir() / spec.cache_folder_name)
+
+        target = spec.local_path()
+        if spec.kind == "zip":
+            archive = target.parent / f"{target.name}.zip.partial"
+            return _path_size(target) + _path_size(archive)
+
+        partial = target.with_suffix(target.suffix + ".partial")
+        return _path_size(target) + _path_size(partial)
 
     def _size_on_disk(self, spec: ModelSpec) -> int:
         if spec.kind == "hub":
@@ -256,34 +278,22 @@ class ModelManager:
             progress(spec.id, 1.0)
 
     def _download_repo_file(self, spec: ModelSpec, progress: ProgressCallback | None) -> None:
-        """Один файл из репозитория по точному пути.
+        """Один файл из репозитория — прямой ссылкой, а не через huggingface_hub.
 
-        Загрузка идёт сразу в целевой каталог. Через кэш с последующим
-        копированием файл занял бы на диске двойной объём, а языковая модель
-        весит несколько гигабайт.
+        Причина: репозитории с языковыми моделями лежат в хранилище Xet, и без
+        пакета ``hf_xet`` библиотека откатывается на резервный путь, который на
+        многогигабайтном файле останавливается почти на нуле. Прямая ссылка
+        отдаёт файл ровно, поддерживает докачку и даёт честный прогресс.
         """
-        try:
-            from huggingface_hub import hf_hub_download
-        except ImportError as exc:
-            raise ModelDownloadError(_MISSING_HUB) from exc
-
         target = spec.local_path()
         target.parent.mkdir(parents=True, exist_ok=True)
-        if progress:
-            progress(spec.id, 0.05)
+        partial = target.with_suffix(target.suffix + ".partial")
 
-        downloaded = Path(
-            hf_hub_download(
-                repo_id=spec.repo,
-                filename=spec.patterns[0],
-                local_dir=str(target.parent),
-            )
-        )
-        # Имя в реестре может отличаться от имени в репозитории.
-        if downloaded.resolve() != target.resolve():
-            shutil.move(str(downloaded), str(target))
-        if progress:
-            progress(spec.id, 1.0)
+        self._fetch(spec, partial, progress, url=resolve_url(spec))
+        if spec.sha256 and not verify_sha256(partial, spec.sha256):
+            partial.unlink(missing_ok=True)
+            raise ModelDownloadError(f"«{spec.title}»: контрольная сумма не совпала")
+        partial.replace(target)
 
     def _download_url(self, spec: ModelSpec, progress: ProgressCallback | None) -> Path:
         target = spec.local_path()
@@ -319,7 +329,11 @@ class ModelManager:
         return target
 
     def _fetch(
-        self, spec: ModelSpec, destination: Path, progress: ProgressCallback | None
+        self,
+        spec: ModelSpec,
+        destination: Path,
+        progress: ProgressCallback | None,
+        url: str = "",
     ) -> None:
         """Скачивает файл с докачкой с прерванного места."""
         existing = destination.stat().st_size if destination.exists() else 0
@@ -327,7 +341,7 @@ class ModelManager:
         if existing:
             headers["Range"] = f"bytes={existing}-"
 
-        request = Request(spec.url, headers=headers)
+        request = Request(url or spec.url, headers=headers)
         with urlopen(request, timeout=60) as response:
             if existing and response.status != 206:
                 # Сервер не поддержал докачку: начинаем сначала.
@@ -348,11 +362,21 @@ class ModelManager:
             progress(spec.id, 1.0)
 
     def download_missing(
-        self, preset: str, progress: ProgressCallback | None = None
+        self,
+        preset: str,
+        progress: ProgressCallback | None = None,
+        on_model: ModelCallback | None = None,
     ) -> list[str]:
-        """Догружает недостающие модели пресета по очереди."""
+        """Догружает недостающие модели пресета по очереди.
+
+        ``on_model`` вызывается перед каждой моделью и получает её номер в
+        очереди: интерфейсу нужно знать, за какой моделью следить.
+        """
+        missing = self.download_plan(preset).missing
         downloaded: list[str] = []
-        for spec in self.download_plan(preset).missing:
+        for index, spec in enumerate(missing, start=1):
+            if on_model is not None:
+                on_model(spec, index, len(missing))
             self.download(spec.id, progress)
             downloaded.append(spec.id)
         return downloaded
@@ -451,12 +475,28 @@ def verify_sha256(path: Path, expected: str) -> bool:
     return digest.hexdigest().lower() == expected.lower()
 
 
+def resolve_url(spec: ModelSpec) -> str:
+    """Прямая ссылка на файл в репозитории Hugging Face."""
+    return f"https://huggingface.co/{spec.repo}/resolve/main/{spec.patterns[0]}"
+
+
 def _path_size(path: Path) -> int:
     if not path.exists():
         return 0
     if path.is_file():
         return path.stat().st_size
     return sum(child.stat().st_size for child in path.rglob("*") if child.is_file())
+
+
+def _payload_size(cache_folder: Path) -> int:
+    """Объём скачанных данных в каталоге кэша Hugging Face.
+
+    Считается только ``blobs``: в ``snapshots`` лежат те же данные повторно,
+    потому что на Windows без прав на символические ссылки библиотека копирует
+    файлы. Учёт обеих папок дал бы двести процентов на индикаторе.
+    """
+    blobs = cache_folder / "blobs"
+    return _path_size(blobs) if blobs.exists() else _path_size(cache_folder)
 
 
 def guess_extension(url: str) -> str:

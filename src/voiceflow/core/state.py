@@ -29,15 +29,18 @@ class AppState(Enum):
 
 
 #: Подписи для плашки. Держим рядом с состояниями, чтобы не разошлись.
+#: Подписи от первого лица и в настоящем времени: по плашке должно быть
+#: видно, что приложение живо, что команда услышана и на каком шаге работа.
+#: Длина ограничена шириной плашки — примерно двадцать знаков.
 STATE_LABELS: dict[AppState, str] = {
-    AppState.IDLE: "Готово",
-    AppState.LISTENING: "Слушаю",
-    AppState.RECORDING: "Запись",
-    AppState.TRANSCRIBING: "Распознаю",
-    AppState.PROCESSING: "Очищаю",
-    AppState.PASTING: "Вставляю",
+    AppState.IDLE: "Готов к записи",
+    AppState.LISTENING: "Прослушиваю",
+    AppState.RECORDING: "Записываю",
+    AppState.TRANSCRIBING: "Распознаю речь",
+    AppState.PROCESSING: "Обрабатываю",
+    AppState.PASTING: "Вставляю текст",
     AppState.ERROR: "Ошибка",
-    AppState.PAUSED: "Пауза",
+    AppState.PAUSED: "На паузе",
 }
 
 #: Разрешённые переходы. Ошибка и пауза достижимы из любого состояния.
