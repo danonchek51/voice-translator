@@ -299,6 +299,40 @@ def test_llm_can_be_switched_off_in_settings() -> None:
     assert "отключена" in result.fallback_reason
 
 
+def test_summary_names_rule_cleanup_without_llm() -> None:
+    """Без языковой модели очистка всё равно работает — сводка обязана это показать."""
+    settings = settings_with(clean_enabled=True)
+    settings.use_llm = False
+    processor = make(settings)
+
+    result = processor.process("это ну значит вот тест")
+
+    assert result.rules_applied is True
+    assert result.used_llm is False
+    assert result.summary == "очистка правилами"
+
+
+def test_summary_lists_rules_and_llm_steps() -> None:
+    processor = make(
+        settings_with(clean_enabled=True, translate_enabled=True),
+        polisher=lambda text, step: text.upper(),
+    )
+
+    result = processor.process("это ну значит вот тест")
+
+    assert result.summary.startswith("очистка правилами → ")
+    assert "translate" in result.summary
+
+
+def test_summary_says_nothing_applied_when_all_steps_off() -> None:
+    processor = make(settings_with())
+
+    result = processor.process("текст без обработки")
+
+    assert result.rules_applied is False
+    assert result.summary == "без обработки"
+
+
 def test_cleaned_text_is_reported_separately() -> None:
     """История хранит и очищенный, и итоговый текст."""
 

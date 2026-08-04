@@ -24,6 +24,9 @@ _HF_HOME = "HF_HOME"
 _HF_HUB_CACHE = "HF_HUB_CACHE"
 _HF_OFFLINE = "HF_HUB_OFFLINE"
 _TRANSFORMERS_OFFLINE = "TRANSFORMERS_OFFLINE"
+#: Полосы прогресса библиотеки не нужны: приложение показывает свою.
+#: В сборке без консоли они к тому же пишут в отсутствующий поток.
+_HF_NO_PROGRESS = "HF_HUB_DISABLE_PROGRESS_BARS"
 
 
 def configure_offline_cache() -> None:
@@ -34,6 +37,7 @@ def configure_offline_cache() -> None:
         os.environ[_HF_HUB_CACHE] = str(paths.hf_cache_dir() / "hub")
     os.environ[_HF_OFFLINE] = "1"
     os.environ[_TRANSFORMERS_OFFLINE] = "1"
+    os.environ.setdefault(_HF_NO_PROGRESS, "1")
     logger.debug("Кэш моделей: %s (офлайн)", os.environ[_HF_HOME])
 
 

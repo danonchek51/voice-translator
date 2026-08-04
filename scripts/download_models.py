@@ -19,12 +19,14 @@ def _print_plan(plan: DownloadPlan) -> None:
     spec = get_preset(plan.preset)
     print(f"Пресет «{spec.title}»: {spec.summary}")
     for model in plan.installed:
-        print(f"  [есть]    {model.title}")
+        print(f"  [есть]       {model.title}")
     for model in plan.missing:
-        print(f"  [скачать] {model.title} — {model.size_mb:.0f} МБ")
+        print(f"  [скачать]    {model.title} — {model.size_mb:.0f} МБ")
+    for model in plan.unavailable:
+        print(f"  [нет пакета] {model.title} — {model.notes}")
     for model in plan.manual:
         note = f" ({model.notes})" if model.notes else ""
-        print(f"  [вручную] {model.title}{note}")
+        print(f"  [вручную]    {model.title}{note}")
     print(f"Итого к загрузке: {plan.total_gb:.2f} ГБ")
 
 
@@ -70,9 +72,6 @@ def main(argv: list[str] | None = None) -> int:
         if spec is None:
             print(f"Неизвестная модель: {model_id}", file=sys.stderr)
             failed.append(model_id)
-            continue
-        if not spec.url:
-            print(f"Пропускаю {model_id}: ссылки нет, требуется ручная установка")
             continue
 
         print(f"Загружаю {spec.title}...")

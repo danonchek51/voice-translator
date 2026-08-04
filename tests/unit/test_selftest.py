@@ -42,7 +42,8 @@ def test_microphone_reports_signal() -> None:
     result = check_microphone(CaptureStub(peak=0.4), steps=3, sleep=_no_sleep)
 
     assert result.ok
-    assert "0.40" in result.detail
+    assert "0.400" in result.detail
+    assert not result.hint
 
 
 def test_microphone_without_signal_gives_hint() -> None:
@@ -50,6 +51,25 @@ def test_microphone_without_signal_gives_hint() -> None:
 
     assert not result.ok
     assert result.hint
+
+
+def test_quiet_signal_is_not_shown_as_zero() -> None:
+    """Пик 0.004 при двух знаках печатался как «0.00» и противоречил тексту."""
+    result = check_microphone(CaptureStub(peak=0.004), steps=3, sleep=_no_sleep)
+
+    assert result.ok
+    assert "0.004" in result.detail
+    assert "0.00 " not in result.detail
+    assert "тихий" in result.detail
+    assert result.hint
+
+
+def test_loud_enough_signal_has_no_complaints() -> None:
+    result = check_microphone(CaptureStub(peak=0.05), steps=3, sleep=_no_sleep)
+
+    assert result.ok
+    assert "тихий" not in result.detail
+    assert not result.hint
 
 
 def test_microphone_closed_stream_points_at_pause() -> None:

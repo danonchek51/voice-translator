@@ -1,107 +1,152 @@
 # Реестр моделей VoiceFlow.
-# В репозитории только ссылки и контрольные суммы — сами файлы не хранятся.
+#
+# В репозитории только ссылки и размеры — сами файлы хранятся вне Git.
+# Все идентификаторы репозиториев и размеры проверены обращением к API
+# Hugging Face: выдуманное имя даст 401 и сорвёт загрузку у пользователя.
+#
+# Поле kind определяет, куда попадёт загрузка. Это важно: каждый движок ищет
+# файлы в своём месте, и промах означает «скачано, но не найдено».
+#   hub     - часть репозитория в общий кэш моделей (так ищет onnx-asr)
+#   whisper - репозиторий целиком в отдельный кэш faster-whisper
+#   file    - один файл из репозитория
+#   url     - прямая ссылка на файл
+#   zip     - архив по ссылке с распаковкой
+#   manual  - ставится руками
 
-schema_version = 1
+schema_version = 2
+
+# --------------------------------------------------------------------------- #
+# Определение речи
+# --------------------------------------------------------------------------- #
 
 [[models]]
 id = "silero-vad"
 title = "Silero VAD"
 purpose = "vad"
 presets = ["light", "standard", "quality"]
-size_bytes = 2_300_000
-sha256 = ""
+kind = "url"
 url = "https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx"
 relative_path = "vad/silero_vad.onnx"
+size_bytes = 2_327_524
 required = true
+notes = "Ворота для голосовой активации: без речи тяжёлый детектор не запускается."
 
+# --------------------------------------------------------------------------- #
+# Распознавание речи
+# --------------------------------------------------------------------------- #
+
+# Имена записей совпадают с именами моделей onnx-asr: реестр и движок
+# обязаны говорить об одном и том же.
 [[models]]
-id = "gigaam-ctc"
-title = "GigaAM-v3 CTC int8"
+id = "gigaam-v3-e2e-ctc"
+title = "GigaAM-v3 E2E CTC (int8)"
 purpose = "asr"
 presets = ["light"]
-size_bytes = 250_000_000
-sha256 = ""
-url = "hf://onnx-community/gigaam-v3-ctc"
-relative_path = "asr/gigaam-ctc"
-required = false
-notes = "Основной русский движок для лёгкого пресета (CPU)."
+kind = "hub"
+repo = "istupakov/gigaam-v3-onnx"
+patterns = [
+    "config.json",
+    "v3_e2e_ctc.int8.onnx",
+    "v3_e2e_ctc.yaml",
+    "v3_e2e_ctc_vocab.txt",
+]
+requires = "onnx_asr"
+size_bytes = 224_896_388
+notes = "Русский язык, пунктуация и числа из коробки. Быстрее RNN-T на процессоре."
 
 [[models]]
-id = "gigaam-rnnt"
-title = "GigaAM-v3 RNNT"
+id = "gigaam-v3-e2e-rnnt"
+title = "GigaAM-v3 E2E RNN-T (int8)"
 purpose = "asr"
 presets = ["standard", "quality"]
-size_bytes = 300_000_000
-sha256 = ""
-url = "hf://onnx-community/gigaam-v3-rnnt"
-relative_path = "asr/gigaam-rnnt"
-required = false
+kind = "hub"
+repo = "istupakov/gigaam-v3-onnx"
+patterns = [
+    "config.json",
+    "v3_e2e_rnnt_encoder.int8.onnx",
+    "v3_e2e_rnnt_decoder.int8.onnx",
+    "v3_e2e_rnnt_joint.int8.onnx",
+    "v3_e2e_rnnt.yaml",
+    "v3_e2e_rnnt_vocab.txt",
+]
+requires = "onnx_asr"
+size_bytes = 226_431_968
+notes = "Точнее CTC примерно на процентный пункт WER. Основной вариант для русского."
+
+# Whisper нужен только для смешанной русско-английской речи и требует
+# отдельного пакета: uv sync --extra whisper
+[[models]]
+id = "whisper-small"
+title = "Whisper small (CTranslate2)"
+purpose = "asr"
+presets = ["light"]
+kind = "whisper"
+repo = "Systran/faster-whisper-small"
+requires = "faster_whisper"
+size_bytes = 486_215_847
+notes = "Многоязычный вариант для лёгкого пресета. Нужен пакет whisper."
 
 [[models]]
-id = "whisper-turbo"
-title = "faster-whisper large-v3-turbo"
+id = "whisper-large-v3-turbo"
+title = "Whisper large-v3-turbo (CTranslate2)"
 purpose = "asr"
 presets = ["standard", "quality"]
-size_bytes = 800_000_000
-sha256 = ""
-url = "hf://Systran/faster-whisper-large-v3-turbo"
-relative_path = "whisper/large-v3-turbo"
-required = false
-notes = "Для смешанной русско-английской речи."
+kind = "whisper"
+repo = "mobiuslabsgmbh/faster-whisper-large-v3-turbo"
+requires = "faster_whisper"
+size_bytes = 1_621_668_947
+notes = "Смешанная речь и английские термины латиницей. Нужен пакет whisper."
+
+# --------------------------------------------------------------------------- #
+# Голосовая активация
+# --------------------------------------------------------------------------- #
 
 [[models]]
 id = "vosk-small-ru"
 title = "Vosk small-ru"
 purpose = "wake"
 presets = ["light", "standard", "quality"]
-size_bytes = 45_000_000
-sha256 = ""
+kind = "zip"
 url = "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip"
 relative_path = "wake/vosk-model-small-ru"
-required = false
-notes = "Детектор голосовой команды."
+requires = "vosk"
+size_bytes = 46_236_750
+notes = "Детектор фразы запуска. Нужен пакет wake-vosk."
+
+# --------------------------------------------------------------------------- #
+# Языковая модель
+# --------------------------------------------------------------------------- #
 
 [[models]]
 id = "qwen3-4b"
-title = "Qwen3-4B-Instruct Q4_K_M"
+title = "Qwen3-4B Q4_K_M"
 purpose = "llm"
 presets = ["standard"]
-size_bytes = 2_500_000_000
-sha256 = ""
-url = "hf://Qwen/Qwen3-4B-Instruct-GGUF"
-relative_path = "llm/Qwen3-4B-Instruct-Q4_K_M.gguf"
-required = false
+kind = "file"
+repo = "Qwen/Qwen3-4B-GGUF"
+patterns = ["Qwen3-4B-Q4_K_M.gguf"]
+relative_path = "llm/Qwen3-4B-Q4_K_M.gguf"
+size_bytes = 2_497_280_256
+notes = "Помещается рядом с распознаванием на 6 ГБ видеопамяти."
 
 [[models]]
 id = "qwen3-8b"
-title = "Qwen3-8B-Instruct Q4_K_M"
+title = "Qwen3-8B Q4_K_M"
 purpose = "llm"
 presets = ["quality"]
-size_bytes = 4_900_000_000
-sha256 = ""
-url = "hf://Qwen/Qwen3-8B-Instruct-GGUF"
-relative_path = "llm/Qwen3-8B-Instruct-Q4_K_M.gguf"
-required = false
+kind = "file"
+repo = "Qwen/Qwen3-8B-GGUF"
+patterns = ["Qwen3-8B-Q4_K_M.gguf"]
+relative_path = "llm/Qwen3-8B-Q4_K_M.gguf"
+size_bytes = 5_027_783_488
+notes = "Требует поочерёдной загрузки с распознаванием на 6 ГБ видеопамяти."
 
 [[models]]
-id = "opus-mt-ru-en"
-title = "Opus-MT ru-en int8"
-purpose = "translate"
-presets = ["light"]
-size_bytes = 80_000_000
-sha256 = ""
-url = "hf://Helsinki-NLP/opus-mt-ru-en"
-relative_path = "translate/opus-mt-ru-en"
-required = false
-
-[[models]]
-id = "llama-server-cuda"
+id = "llama-server"
 title = "llama-server (CUDA)"
 purpose = "runtime"
 presets = ["standard", "quality"]
-size_bytes = 150_000_000
-sha256 = ""
-url = ""
+kind = "manual"
 relative_path = "runtime/llama.cpp"
-required = false
-notes = "Официальная Windows CUDA-сборка llama.cpp. Можно заменить на Ollama/LM Studio."
+size_bytes = 0
+notes = "Официальная Windows-сборка llama.cpp. Либо укажите адрес уже работающего Ollama или LM Studio в настройках."

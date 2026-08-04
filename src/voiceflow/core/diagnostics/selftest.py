@@ -31,6 +31,12 @@ SAMPLE_TEXT = (
 #: Строка, которую проверка вставки отправляет в активное окно.
 PASTE_PROBE = "VoiceFlow: проверка вставки"
 
+#: Ниже этого пика сигнала нет вовсе: устройство отдаёт тишину.
+SILENCE_PEAK = 0.001
+
+#: Ниже этого пика речь распознаётся плохо — об этом стоит предупредить.
+QUIET_PEAK = 0.02
+
 
 @dataclass(frozen=True, slots=True)
 class CheckResult:
@@ -70,7 +76,7 @@ def check_microphone(
         peak = max(peak, float(reading.peak))
         sleep(pause)
 
-    if peak <= 0.001:
+    if peak <= SILENCE_PEAK:
         return CheckResult(
             ok=False,
             title="Микрофон",
@@ -81,10 +87,23 @@ def check_microphone(
             ),
         )
 
+    # Точность три знака: при двух едва слышный сигнал печатался как «0.00»
+    # и выглядел прямым противоречием словам «сигнал есть».
+    if peak < QUIET_PEAK:
+        return CheckResult(
+            ok=True,
+            title="Микрофон",
+            detail=f"Сигнал очень тихий, пик {peak:.3f}",
+            hint=(
+                "Для такого уровня распознавание будет ошибаться. Говорите ближе "
+                "к микрофону или поднимите громкость записи в параметрах Windows."
+            ),
+        )
+
     return CheckResult(
         ok=True,
         title="Микрофон",
-        detail=f"Сигнал есть, пиковый уровень {peak:.2f}",
+        detail=f"Сигнал есть, пиковый уровень {peak:.3f}",
     )
 
 

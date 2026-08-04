@@ -13,6 +13,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QFileDialog,
     QGroupBox,
     QLabel,
@@ -75,6 +76,8 @@ class PresetPage(QWizardPage):
 
         layout = QVBoxLayout(self)
         self._buttons: dict[str, QRadioButton] = {}
+        self._group = QButtonGroup(self)
+        self._group.setExclusive(True)
 
         for spec in list_presets():
             layout.addWidget(self._build_option(spec))
@@ -90,6 +93,9 @@ class PresetPage(QWizardPage):
 
         button = QRadioButton(spec.title)
         button.setChecked(spec.id == "standard")
+        # Переключатели лежат в разных карточках, а Qt связывает их по общему
+        # родителю. Без явной группы выбранными оказались бы сразу несколько.
+        self._group.addButton(button)
         self._buttons[spec.id] = button
         box_layout.addWidget(button)
 
@@ -186,14 +192,14 @@ class DownloadPage(QWizardPage):
             )
             self._download_button.setEnabled(True)
 
+        notes: list[str] = []
         if plan.manual:
             names = ", ".join(spec.title for spec in plan.manual)
-            self._status.setText(
-                f"Ставится вручную: {names}. Без этого языковая модель "
-                "не заработает, остальное будет доступно."
-            )
-        else:
-            self._status.setText("")
+            notes.append(f"Ставится вручную: {names}.")
+        if plan.unavailable:
+            names = ", ".join(spec.title for spec in plan.unavailable)
+            notes.append(f"Пропущено, не установлен нужный пакет: {names}.")
+        self._status.setText(" ".join(notes))
 
         self.completeChanged.emit()
 
@@ -201,12 +207,14 @@ class DownloadPage(QWizardPage):
     def _describe(plan: DownloadPlan) -> str:
         lines: list[str] = []
         for spec in plan.installed:
-            lines.append(f"[есть]    {spec.title} — {_human_size(spec.size_bytes)}")
+            lines.append(f"[есть]     {spec.title}")
         for spec in plan.missing:
-            lines.append(f"[скачать] {spec.title} — {_human_size(spec.size_bytes)}")
+            lines.append(f"[скачать]  {spec.title} — {_human_size(spec.size_bytes)}")
+        for spec in plan.unavailable:
+            lines.append(f"[нет пакета] {spec.title} — {spec.notes}")
         for spec in plan.manual:
             note = f" ({spec.notes})" if spec.notes else ""
-            lines.append(f"[вручную] {spec.title}{note}")
+            lines.append(f"[вручную]  {spec.title}{note}")
         return "\n".join(lines) or "Для этого пресета моделей не требуется."
 
     def isComplete(self) -> bool:  # noqa: N802 — имя задано Qt

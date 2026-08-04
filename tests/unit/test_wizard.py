@@ -77,6 +77,26 @@ def test_wizard_shows_download_plan(qt_app, store, manager) -> None:
         wizard.close()
 
 
+def test_only_one_preset_stays_selected(qt_app, store, manager) -> None:
+    """Переключатели лежат в разных карточках: без явной группы Qt их не свяжет."""
+    from voiceflow.ui.wizard import FirstRunWizard
+
+    wizard = FirstRunWizard(store, manager)
+    try:
+        buttons = wizard._preset_page._buttons
+        buttons["light"].setChecked(True)
+
+        checked = [name for name, button in buttons.items() if button.isChecked()]
+
+        assert checked == ["light"]
+        assert wizard._preset_page.selected_preset() == "light"
+
+        buttons["quality"].setChecked(True)
+        assert wizard._preset_page.selected_preset() == "quality"
+    finally:
+        wizard.close()
+
+
 def test_finish_writes_preset_to_settings(qt_app, store, manager) -> None:
     from voiceflow.ui.wizard import FirstRunWizard
 

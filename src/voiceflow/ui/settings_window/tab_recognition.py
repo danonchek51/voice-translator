@@ -113,11 +113,13 @@ class RecognitionTab(SettingsTab):
 
         lines: list[str] = []
         for spec in plan.installed:
-            lines.append(f"[есть]    {spec.title}")
+            lines.append(f"[есть]       {spec.title}")
         for spec in plan.missing:
-            lines.append(f"[нет]     {spec.title} — {human_size(spec.size_bytes)}")
+            lines.append(f"[нет]        {spec.title} — {human_size(spec.size_bytes)}")
+        for spec in plan.unavailable:
+            lines.append(f"[нет пакета] {spec.title}")
         for spec in plan.manual:
-            lines.append(f"[вручную] {spec.title}")
+            lines.append(f"[вручную]    {spec.title}")
         self.models_state.setPlainText("\n".join(lines) or "Моделей для пресета не задано.")
 
         if plan.missing:
@@ -125,11 +127,6 @@ class RecognitionTab(SettingsTab):
                 f"Не хватает {len(plan.missing)} моделей, примерно "
                 f"{human_size(plan.total_bytes)}. Откройте вкладку «Модели» "
                 "и загрузите их — до этого распознавание не запустится."
-            )
-        elif plan.manual:
-            self.models_hint.setText(
-                "Основные модели на месте. Осталось поставить вручную то, "
-                "что отмечено в списке."
             )
         else:
             self.models_hint.setText(self._engine_summary())

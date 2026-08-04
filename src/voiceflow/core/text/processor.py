@@ -44,6 +44,9 @@ class ProcessedText:
     steps: tuple[str, ...] = ()
     #: Текст после детерминированной очистки, до языковой модели.
     cleaned: str = ""
+    #: Отработала ли очистка правилами. Она меняет текст и без языковой
+    #: модели, поэтому в сводке её нельзя пропускать.
+    rules_applied: bool = False
     used_llm: bool = False
     #: Почему модель не применялась или её ответ отклонён. Не ошибка.
     fallback_reason: str = ""
@@ -56,8 +59,12 @@ class ProcessedText:
 
     @property
     def summary(self) -> str:
-        """Что применилось. Для журнала и истории."""
-        return " → ".join(self.steps) if self.steps else "без обработки"
+        """Что применилось. Для журнала, истории и диагностики."""
+        parts: list[str] = []
+        if self.rules_applied:
+            parts.append("очистка правилами")
+        parts.extend(self.steps)
+        return " → ".join(parts) if parts else "без обработки"
 
 
 #: Полировка текста языковой моделью. Получает текст с метками и шаг,
@@ -132,6 +139,7 @@ class TextProcessor:
             text=protected.restore(polished),
             steps=applied,
             cleaned=cleaned_final,
+            rules_applied=settings.clean_enabled or settings.glossary_enabled,
             used_llm=bool(applied),
             fallback_reason=reason,
             stats=stats,

@@ -9,8 +9,14 @@ from __future__ import annotations
 import argparse
 import sys
 
+from voiceflow.streams import ensure_output_streams
+
 
 def main(argv: list[str] | None = None) -> int:
+    # Делается первым делом: в сборке без консоли потоков нет, и любая
+    # библиотека, решившая напечатать прогресс, уронила бы приложение.
+    replaced = ensure_output_streams()
+
     parser = argparse.ArgumentParser(
         prog="voiceflow",
         description="Локальный голосовой ввод с очисткой, переводом и вставкой текста",
@@ -30,6 +36,12 @@ def main(argv: list[str] | None = None) -> int:
     from voiceflow.app import build_context, environment_report
 
     context = build_context(console_logging=not args.no_console_log)
+    if replaced:
+        import logging
+
+        logging.getLogger(__name__).debug(
+            "Потоки вывода отсутствовали и заменены заглушками: %s", ", ".join(replaced)
+        )
 
     if args.check:
         report = environment_report(context)

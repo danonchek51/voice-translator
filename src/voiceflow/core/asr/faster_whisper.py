@@ -23,10 +23,14 @@ from voiceflow.core.asr.base import EngineInfo, ModelNotReadyError, Transcriber
 
 logger = logging.getLogger(__name__)
 
+#: Полные идентификаторы репозиториев, а не короткие имена вида «small».
+#: Короткое имя faster-whisper разворачивает в репозиторий сам, по своей
+#: внутренней таблице, и она меняется между версиями — тогда загруженная
+#: реестром модель перестаёт находиться. Полное имя убирает эту связь.
 MODEL_BY_PRESET: dict[str, str] = {
-    "light": "small",
-    "standard": "large-v3-turbo",
-    "quality": "large-v3",
+    "light": "Systran/faster-whisper-small",
+    "standard": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+    "quality": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
 }
 
 COMPUTE_TYPE_BY_DEVICE: dict[str, str] = {
@@ -43,7 +47,11 @@ class FasterWhisperTranscriber(Transcriber):
 
     engine = "whisper"
 
-    def __init__(self, model_id: str = "large-v3-turbo", device: str = "cpu") -> None:
+    def __init__(
+        self,
+        model_id: str = "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+        device: str = "cpu",
+    ) -> None:
         super().__init__(model_id=model_id, device=device)
         self._fell_back_to_cpu = False
 
@@ -54,6 +62,11 @@ class FasterWhisperTranscriber(Transcriber):
             device=device,
         )
 
+    @property
+    def short_name(self) -> str:
+        """Имя модели без владельца репозитория — для подписей в интерфейсе."""
+        return self.model_id.rsplit("/", 1)[-1].replace("faster-whisper-", "")
+
     def info(self) -> EngineInfo:
         notes = "99 языков, автоопределение языка"
         if self._fell_back_to_cpu:
@@ -61,7 +74,7 @@ class FasterWhisperTranscriber(Transcriber):
         return EngineInfo(
             engine=self.engine,
             model_id=self.model_id,
-            title=f"Whisper {self.model_id}",
+            title=f"Whisper {self.short_name}",
             languages=("ru", "en", "auto"),
             device="cpu" if self._fell_back_to_cpu else self.device,
             notes=notes,
@@ -76,19 +89,14 @@ class FasterWhisperTranscriber(Transcriber):
         return True
 
     def is_model_ready(self) -> bool:
-        """Наличие весов именно нужного размера, а не какой-нибудь модели."""
+        """Наличие весов именно этой модели, а не какой-нибудь другой."""
         if not self.is_backend_available():
             return False
-        root = paths.whisper_models_dir()
-        if not root.exists():
+        # Раскладка кэша Hugging Face: models--<владелец>--<репозиторий>.
+        folder = paths.whisper_models_dir() / f"models--{self.model_id.replace('/', '--')}"
+        if not folder.is_dir():
             return False
-        # faster-whisper кладёт веса в models--Systran--faster-whisper-<размер>.
-        pattern = f"*faster-whisper-{self.model_id}*"
-        return any(
-            candidate.is_file()
-            for directory in root.glob(pattern)
-            for candidate in directory.rglob("model.bin")
-        )
+        return any(folder.rglob("model.bin"))
 
     def _load_model(self) -> object:
         from faster_whisper import WhisperModel

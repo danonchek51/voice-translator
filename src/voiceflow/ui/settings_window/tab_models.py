@@ -98,24 +98,29 @@ class ModelsTab(SettingsTab):
             self._add_row(model, "установлена")
         for model in plan.missing:
             self._add_row(model, "не загружена")
+        for model in plan.unavailable:
+            self._add_row(model, "нужен пакет")
         for model in plan.manual:
             self._add_row(model, "ставится вручную")
         for column in range(4):
             self.tree.resizeColumnToContents(column)
 
+        parts: list[str] = []
         if plan.missing:
-            self.summary.setText(
+            parts.append(
                 f"К загрузке {len(plan.missing)} шт., примерно "
                 f"{human_size(plan.total_bytes)}. Загрузка идёт в мастере "
                 "и продолжается с прерванного места."
             )
-        elif plan.manual:
-            self.summary.setText(
-                "Автоматически загружать нечего. Осталось поставить вручную "
-                "то, что отмечено в списке."
-            )
         else:
-            self.summary.setText("Все модели пресета на месте.")
+            parts.append("Всё, что можно загрузить автоматически, уже на диске.")
+        if plan.unavailable:
+            names = ", ".join(spec.title for spec in plan.unavailable)
+            parts.append(f"Не установлен нужный пакет: {names}.")
+        if plan.manual:
+            names = ", ".join(spec.title for spec in plan.manual)
+            parts.append(f"Ставится вручную: {names}.")
+        self.summary.setText(" ".join(parts))
 
     def _add_row(self, model, state: str) -> None:  # type: ignore[no-untyped-def]
         status = self._models.status(model.id)
