@@ -1,0 +1,107 @@
+# Реестр моделей VoiceFlow.
+# В репозитории только ссылки и контрольные суммы — сами файлы не хранятся.
+
+schema_version = 1
+
+[[models]]
+id = "silero-vad"
+title = "Silero VAD"
+purpose = "vad"
+presets = ["light", "standard", "quality"]
+size_bytes = 2_300_000
+sha256 = ""
+url = "https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx"
+relative_path = "vad/silero_vad.onnx"
+required = true
+
+[[models]]
+id = "gigaam-ctc"
+title = "GigaAM-v3 CTC int8"
+purpose = "asr"
+presets = ["light"]
+size_bytes = 250_000_000
+sha256 = ""
+url = "hf://onnx-community/gigaam-v3-ctc"
+relative_path = "asr/gigaam-ctc"
+required = false
+notes = "Основной русский движок для лёгкого пресета (CPU)."
+
+[[models]]
+id = "gigaam-rnnt"
+title = "GigaAM-v3 RNNT"
+purpose = "asr"
+presets = ["standard", "quality"]
+size_bytes = 300_000_000
+sha256 = ""
+url = "hf://onnx-community/gigaam-v3-rnnt"
+relative_path = "asr/gigaam-rnnt"
+required = false
+
+[[models]]
+id = "whisper-turbo"
+title = "faster-whisper large-v3-turbo"
+purpose = "asr"
+presets = ["standard", "quality"]
+size_bytes = 800_000_000
+sha256 = ""
+url = "hf://Systran/faster-whisper-large-v3-turbo"
+relative_path = "whisper/large-v3-turbo"
+required = false
+notes = "Для смешанной русско-английской речи."
+
+[[models]]
+id = "vosk-small-ru"
+title = "Vosk small-ru"
+purpose = "wake"
+presets = ["light", "standard", "quality"]
+size_bytes = 45_000_000
+sha256 = ""
+url = "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip"
+relative_path = "wake/vosk-model-small-ru"
+required = false
+notes = "Детектор голосовой команды."
+
+[[models]]
+id = "qwen3-4b"
+title = "Qwen3-4B-Instruct Q4_K_M"
+purpose = "llm"
+presets = ["standard"]
+size_bytes = 2_500_000_000
+sha256 = ""
+url = "hf://Qwen/Qwen3-4B-Instruct-GGUF"
+relative_path = "llm/Qwen3-4B-Instruct-Q4_K_M.gguf"
+required = false
+
+[[models]]
+id = "qwen3-8b"
+title = "Qwen3-8B-Instruct Q4_K_M"
+purpose = "llm"
+presets = ["quality"]
+size_bytes = 4_900_000_000
+sha256 = ""
+url = "hf://Qwen/Qwen3-8B-Instruct-GGUF"
+relative_path = "llm/Qwen3-8B-Instruct-Q4_K_M.gguf"
+required = false
+
+[[models]]
+id = "opus-mt-ru-en"
+title = "Opus-MT ru-en int8"
+purpose = "translate"
+presets = ["light"]
+size_bytes = 80_000_000
+sha256 = ""
+url = "hf://Helsinki-NLP/opus-mt-ru-en"
+relative_path = "translate/opus-mt-ru-en"
+required = false
+
+[[models]]
+id = "llama-server-cuda"
+title = "llama-server (CUDA)"
+purpose = "runtime"
+presets = ["standard", "quality"]
+size_bytes = 150_000_000
+sha256 = ""
+url = ""
+relative_path = "runtime/llama.cpp"
+required = false
+notes = "Официальная Windows CUDA-сборка llama.cpp. Можно заменить на Ollama/LM Studio."

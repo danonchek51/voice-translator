@@ -1,0 +1,60 @@
+# Окружение и кэши Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Сборка
+build/
+dist/
+installer_output/
+*.spec.bak
+
+# Модели и их кэш.
+# Шаблоны привязаны к корню: иначе они скрыли бы пакеты исходного кода
+# с такими же именами и те молча не попали бы в репозиторий.
+/models/
+/userdata/
+/model_cache/
+/cache/
+*.gguf
+*.onnx
+*.ct2/
+*.bin
+*.pt
+
+# Пользовательские данные
+/data/
+*.db
+*.db-wal
+*.db-shm
+/logs/
+*.log
+settings.toml
+glossary.toml
+user_prompts/
+portable.txt
+
+# Аудио
+*.wav
+*.mp3
+*.flac
+*.ogg
+!tests/fixtures/audio/*.wav
+
+# Секреты
+.env
+.env.*
+*.key
+secrets.toml
+
+# ОС и IDE
+Thumbs.db
+desktop.ini
+.DS_Store
+.idea/

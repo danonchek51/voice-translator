@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+# Новый коммит отменяет предыдущий прогон в той же ветке.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Проверки
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Установить uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Python 3.12
+        run: uv python install 3.12
+
+      - name: Зависимости
+        run: uv sync --group dev
+
+      - name: Ruff
+        run: uv run ruff check src tests scripts
+
+      - name: Типы в пакете core
+        run: uv run mypy src/voiceflow/core
+
+      - name: Тесты
+        # Модели в CI не загружаются, поэтому медленные тесты пропускаются.
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run pytest tests/unit tests/integration -q
+
+  portable:
+    name: Portable-архив
+    # Собираем только по тегу: сборка тяжёлая и не нужна на каждый коммит.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: checks
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Установить uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Python 3.12
+        run: uv python install 3.12
+
+      - name: Собрать
+        run: powershell -ExecutionPolicy Bypass -File scripts/build_portable.ps1
+
+      - name: Выложить архив
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoiceFlow-portable
+          path: dist/VoiceFlow-portable.zip
+          if-no-files-found: error

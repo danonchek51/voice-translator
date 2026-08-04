@@ -1,0 +1,95 @@
+# Заводские настройки VoiceFlow.
+#
+# Этот файл только для чтения: приложение никогда его не перезаписывает.
+# Пользовательские значения лежат отдельно (см. вкладку «Диагностика» ->
+# «Пути») и содержат только отличия от значений ниже. Поэтому «Сбросить
+# раздел» — это удаление ключей из пользовательского файла, а не копирование
+# умолчаний.
+
+schema_version = 2
+
+[audio]
+# device_id не задан: используется системное устройство по умолчанию.
+device_name = ""
+gain = 1.0
+
+[activation]
+# Голосовая активация выключена намеренно: постоянно открытый микрофон должен
+# быть осознанным выбором. Резервные способы запуска работают всегда.
+wake_enabled = false
+wake_phrase = "слушай сюда"
+# phrase | same_phrase | press_again | hold
+stop_mode = "press_again"
+stop_phrase = "конец записи"
+# 1 — самый строгий порог, 10 — самый чуткий.
+sensitivity = 5
+cooldown_ms = 2000
+hotkey = "<ctrl>+<alt>+d"
+# none | x1 | x2 | middle
+mouse_button = "x2"
+# Защитный лимит длительности действует всегда.
+max_record_seconds = 300
+silence_stop_enabled = false
+silence_stop_seconds = 3.0
+
+[recognition]
+# light | standard | quality
+preset = "standard"
+# auto | gigaam | whisper
+engine = "auto"
+# auto | fixed
+language_mode = "fixed"
+primary_language = "ru"
+
+[processing]
+# Обработка — цепочка шагов, каждый включается своим флагом и применяется
+# в порядке: очистка -> перевод -> инструкция. Все флаги выключены —
+# получается дословный текст.
+use_llm = true
+clean_enabled = true
+# Перевод и инструкция меняют текст сильнее всего, поэтому по умолчанию
+# выключены: пользователь включает их осознанно.
+translate_enabled = false
+prompt_mode_enabled = false
+glossary_enabled = true
+guard_strict = true
+
+[llm]
+# builtin — приложение само запускает llama-server;
+# external — используется уже запущенный Ollama или LM Studio.
+backend = "builtin"
+endpoint = "http://127.0.0.1:8079"
+model_path = ""
+n_gpu_layers = 999
+context_size = 4096
+timeout_s = 8.0
+keep_loaded = true
+
+[output]
+auto_paste = true
+paste_delay_ms = 150
+# ctrl_v | shift_insert | unicode
+paste_method = "ctrl_v"
+restore_clipboard = false
+confirm_if_window_changed = true
+
+[overlay]
+visible = true
+screen_id = ""
+scale = 100
+opacity = 90
+always_on_top = true
+
+[history]
+enabled = true
+# Допустимые значения: 0, 10, 20, 50, 100. Ноль полностью отключает запись.
+max_entries = 50
+
+[system]
+autostart = false
+start_minimized = true
+ui_language = "ru"
+# DEBUG | INFO | WARNING | ERROR
+log_level = "INFO"
+# Разрешает писать распознанный текст в лог. Только для отладки.
+log_user_text = false

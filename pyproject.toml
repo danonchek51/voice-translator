@@ -1,0 +1,108 @@
+[project]
+name = "voiceflow"
+version = "0.1.0"
+description = "Локальный голосовой ввод с очисткой, переводом и вставкой в активное окно"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+
+dependencies = [
+    "numpy>=1.26,<3",
+    "sounddevice>=0.5.1",
+    "PySide6>=6.8",
+    "tomli-w>=1.0",
+    "httpx>=0.27",
+    "pynput>=1.8.2",
+    "pywin32>=306; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+# Локальное распознавание речи на onnxruntime (GigaAM, Silero VAD).
+# onnx-asr берёт на себя мел-спектрограммы и декодеры CTC/RNN-T,
+# huggingface-hub нужен только мастеру первичной загрузки моделей.
+asr = ["onnxruntime>=1.20", "onnx-asr>=0.12", "huggingface-hub>=0.26"]
+# То же, но со сборкой под CUDA. Ставится вместо asr, не вместе с ним.
+asr-gpu = ["onnxruntime-gpu>=1.20", "onnx-asr>=0.12", "huggingface-hub>=0.26"]
+# Многоязычное распознавание для смешанной русско-английской речи.
+whisper = ["faster-whisper>=1.1"]
+# Детекторы голосовой команды.
+wake-vosk = ["vosk>=0.3.45"]
+wake-sherpa = ["sherpa-onnx>=1.10"]
+# Локальный перевод специализированной моделью без LLM.
+translate = ["ctranslate2>=4.5", "sentencepiece>=0.2", "transformers>=4.44"]
+
+[project.scripts]
+voiceflow = "voiceflow.__main__:main"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "types-pywin32>=306; sys_platform == 'win32'",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/voiceflow"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # bugbear
+    "A",    # builtins shadowing
+    "C4",   # comprehensions
+    "PTH",  # использовать pathlib вместо os.path
+    "RUF",
+]
+ignore = [
+    "RUF001",  # кириллица рядом с латиницей в строках — это ожидаемо
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["voiceflow", "tests"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src/voiceflow"]
+ignore_missing_imports = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = false
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = "voiceflow.core.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+warn_return_any = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Корень нужен, чтобы тесты видели общий пакет с подставными реализациями.
+pythonpath = ["src", "."]
+addopts = "-ra --strict-markers"
+markers = [
+    "slow: требует загруженных моделей, в CI пропускается",
+    "gui: требует запущенного Qt-приложения",
+    "windows: только для Windows",
+]

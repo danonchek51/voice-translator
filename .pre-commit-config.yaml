@@ -1,0 +1,24 @@
+# Установка: uv run pre-commit install
+repos:
+  # ruff-format намеренно не включён: проект написан с ручной раскладкой строк,
+  # автоформат переписал бы почти каждый файл и утопил бы содержательные правки.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+  - repo: local
+    hooks:
+      - id: no-models-or-audio
+        name: Модели, аудио и крупные файлы в репозиторий не попадают
+        entry: python scripts/check_commit_files.py
+        language: system
+        pass_filenames: true
+
+      - id: mypy-core
+        name: Проверка типов в пакете core
+        entry: uv run mypy src/voiceflow/core
+        language: system
+        pass_filenames: false
+        files: ^src/voiceflow/core/

@@ -1,0 +1,19 @@
+# Нормализация переводов строк.
+# Проект рассчитан на перенос на macOS, поэтому в репозитории храним LF,
+# а в рабочей копии Windows получает то, что ей нужно.
+* text=auto eol=lf
+
+# Скрипты Windows должны остаться с CRLF: PowerShell 5.1 и Inno Setup
+# читают их вместе с BOM, и смена переводов строк ломает разбор кириллицы.
+*.ps1 text eol=crlf
+*.iss text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Двоичное содержимое не трогаем.
+*.png binary
+*.ico binary
+*.wav binary
+*.onnx binary
+*.gguf binary
+*.zip binary
