@@ -52,7 +52,10 @@ CLEAN = ProcessingStep(
 TRANSLATE = ProcessingStep(
     id="translate",
     title="Перевод на английский",
-    description="Переводит результат на естественный английский.",
+    description=(
+        "Переводит результат на естественный английский. "
+        "Нужна скачанная языковая модель."
+    ),
     prompt_id="translate.en",
     enabled_by="translate_enabled",
     progress_label="Перевожу",
@@ -63,8 +66,9 @@ PROMPT = ProcessingStep(
     id="prompt",
     title="Инструкция для AI",
     description=(
-        "Превращает поток мыслей в краткую английскую инструкцию "
-        "для другой модели. Можно сочетать с очисткой и переводом."
+        "Из русской (или смешанной) диктовки делает готовую английскую "
+        "инструкцию для другой модели. Нужна скачанная языковая модель: "
+        "без неё шаг не работает, и вставится русский текст."
     ),
     prompt_id="prompt_engineer",
     enabled_by="prompt_mode_enabled",

@@ -214,7 +214,11 @@ class TextProcessor:
             except Exception as exc:
                 logger.warning("Шаг «%s» не выполнен: %s", step.id, exc)
                 reasons.append(f"{step.title}: модель не ответила")
-                # Дальше идти нет смысла: следующий шаг ждёт результат этого.
+                # Очистка моделью — уточнение поверх правил. Если она упала,
+                # перевод и инструкцию всё равно нужно попробовать: иначе
+                # при недоступной модели цепочка молча отдаёт русский текст.
+                if step.id == "clean":
+                    continue
                 break
 
             verdict = self._guard.check(
@@ -222,6 +226,8 @@ class TextProcessor:
             )
             if not verdict.accepted:
                 reasons.append(f"{step.title}: {verdict.reason}")
+                if step.id == "clean":
+                    continue
                 break
 
             current = verdict.text

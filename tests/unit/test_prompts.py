@@ -199,7 +199,6 @@ def test_repository_prompts_are_valid(tmp_path: Path) -> None:
         prompt = library.load(step.prompt_id)
         assert prompt.body.strip(), f"инструкция «{step.prompt_id}» пуста"
         assert "{text}" in prompt.body, f"в «{step.prompt_id}» нет подстановки текста"
-        assert "_shared_rules" in prompt.includes
 
 
 def test_repository_shared_rules_mention_protected_fragments(tmp_path: Path) -> None:
@@ -210,6 +209,19 @@ def test_repository_shared_rules_mention_protected_fragments(tmp_path: Path) -> 
 
     assert "⟦T1⟧" in body
     assert "только итоговый текст" in body.lower()
+
+
+def test_prompt_engineer_system_is_english_only(tmp_path: Path) -> None:
+    """Русские общие правила уводили модель в русский ответ."""
+    library = PromptLibrary(user_dir=tmp_path / "user")
+
+    prompt = library.load("prompt_engineer")
+    system, user = library.render("prompt_engineer", text="надо сделать логин")
+
+    assert "_shared_rules" not in prompt.includes
+    assert "English" in system
+    assert "⟦T1⟧" in system
+    assert "надо сделать логин" in user
 
 
 def test_repository_prompts_render(tmp_path: Path) -> None:

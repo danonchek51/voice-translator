@@ -109,13 +109,20 @@ class SettingsWindow(QWidget):
     ) -> None:
         super().__init__(parent)
         self._store = store
+        #: Закрытие крестиком прячет окно в трей; выход — только из меню «Выход».
+        self._quit_on_close = False
 
         self.setWindowTitle("Настройки VoiceFlow")
         # Обычное окно, не модальный диалог: клик по трею не должен его прятать.
         self.setWindowFlags(Qt.WindowType.Window)
         self.setWindowModality(Qt.WindowModality.NonModal)
+        self.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
         self.resize(900, 680)
         self._limit_height()
+
+        from voiceflow.ui import icons
+
+        self.setWindowIcon(icons.app_icon())
 
         self.general = GeneralTab(autostart)
         self.activation = ActivationTab()
@@ -199,7 +206,17 @@ class SettingsWindow(QWidget):
     def closeEvent(self, event) -> None:  # type: ignore[no-untyped-def]  # noqa: N802
         # Предпросмотр оформления не сохранён: возвращаем то, что записано.
         self.closed.emit()
-        super().closeEvent(event)
+        if self._quit_on_close:
+            super().closeEvent(event)
+            return
+        # Крестик и «Закрыть» не завершают приложение: оно живёт в трее.
+        self.hide()
+        event.ignore()
+
+    def force_close(self) -> None:
+        """Закрывает окно при выходе из приложения."""
+        self._quit_on_close = True
+        self.close()
 
     def _preview_appearance(self) -> None:
         """Показывает выбранное оформление сразу, ничего не сохраняя.

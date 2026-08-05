@@ -218,7 +218,8 @@ class AppController(QObject):
         if self._wizard is not None:
             self._wizard.close()
         if self._settings_window is not None:
-            self._settings_window.close()
+            self._settings_window.force_close()
+            self._settings_window = None
 
     def _start_input_listeners(self) -> None:
         """Резервные способы запуска обязаны работать всегда."""

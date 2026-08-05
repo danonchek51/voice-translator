@@ -41,8 +41,10 @@ uv run pyinstaller `
     --onedir `
     --windowed `
     --name $Name `
+    --icon "assets\voiceflow.ico" `
     --paths src `
     --add-data "config;config" `
+    --add-data "assets;assets" `
     --collect-submodules voiceflow `
     --collect-all onnx_asr `
     --collect-all vosk `

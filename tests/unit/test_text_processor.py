@@ -124,12 +124,19 @@ def test_translate_without_clean_keeps_wording() -> None:
 # --------------------------------------------------------------------------- #
 
 
+def _english_or_same(text: str, step: ProcessingStep) -> str:
+    """Моки шагов с английским результатом: guard отклоняет кириллицу."""
+    if step.id in ("translate", "prompt"):
+        return f"English version of: {''.join(ch for ch in text if ord(ch) < 128) or 'ok'}"
+    return text
+
+
 def test_steps_run_in_order() -> None:
     seen: list[str] = []
 
     def polisher(text: str, step: ProcessingStep) -> str:
         seen.append(step.id)
-        return text
+        return _english_or_same(text, step)
 
     processor = make(
         settings_with(clean_enabled=True, translate_enabled=True, prompt_mode_enabled=True),
@@ -148,7 +155,8 @@ def test_each_step_receives_previous_result() -> None:
 
     def polisher(text: str, step: ProcessingStep) -> str:
         received.append(text)
-        return f"{text} +{step.id}"
+        base = _english_or_same(text, step)
+        return f"{base} +{step.id}"
 
     processor = make(
         settings_with(clean_enabled=True, translate_enabled=True), polisher=polisher
@@ -163,7 +171,7 @@ def test_step_listener_reports_progress() -> None:
     announced: list[str] = []
     processor = make(
         settings_with(clean_enabled=True, translate_enabled=True),
-        polisher=lambda text, step: text,
+        polisher=_english_or_same,
     )
 
     processor.process(
@@ -174,19 +182,41 @@ def test_step_listener_reports_progress() -> None:
     assert announced == ["clean", "translate"]
 
 
-def test_rejected_step_stops_the_chain() -> None:
+def test_rejected_clean_does_not_block_later_steps() -> None:
+    """Падение очистки моделью не должно обрывать перевод и инструкцию."""
+
     def polisher(text: str, step: ProcessingStep) -> str:
-        # Пустой ответ guard не пропустит.
-        return "" if step.id == "clean" else "не должно вызваться"
+        if step.id == "clean":
+            return ""
+        return "Redo the whole project by Friday"
 
     processor = make(
         settings_with(clean_enabled=True, translate_enabled=True), polisher=polisher
     )
 
-    result = processor.process("надо переделать проект целиком")
+    result = processor.process("надо переделать проект целиком до пятницы")
 
-    assert result.steps == ()
+    assert result.steps == ("translate",)
+    assert "Friday" in result.text
     assert "Очистка" in result.fallback_reason
+
+
+def test_rejected_translate_stops_the_chain() -> None:
+    def polisher(text: str, step: ProcessingStep) -> str:
+        if step.id == "translate":
+            return ""
+        return text
+
+    processor = make(
+        settings_with(clean_enabled=True, translate_enabled=True, prompt_mode_enabled=True),
+        polisher=polisher,
+    )
+
+    result = processor.process("надо переделать проект целиком до пятницы")
+
+    assert result.steps == ("clean",)
+    assert "Перевод" in result.fallback_reason
+    assert "prompt" not in result.steps
 
 
 def test_failed_step_keeps_earlier_result() -> None:
@@ -238,13 +268,15 @@ def test_polisher_never_sees_protected_fragments() -> None:
 
 def test_polished_text_gets_fragments_back() -> None:
     def polisher(text: str, step: ProcessingStep) -> str:
-        return f"Please open {text}"
+        # Английский ответ с той же меткой: guard не пропустит кириллицу.
+        return text.replace("открой", "Please open").replace("Открой", "Please open")
 
     processor = make(settings_with(translate_enabled=True), polisher=polisher)
 
     result = processor.process("открой main.py")
 
     assert "main.py" in result.text
+    assert "Please open" in result.text
     assert result.used_llm is True
 
 
@@ -313,9 +345,14 @@ def test_summary_names_rule_cleanup_without_llm() -> None:
 
 
 def test_summary_lists_rules_and_llm_steps() -> None:
+    def polisher(text: str, step: ProcessingStep) -> str:
+        if step.id == "translate":
+            return "THIS MEANS THIS TEST"
+        return text.upper()
+
     processor = make(
         settings_with(clean_enabled=True, translate_enabled=True),
-        polisher=lambda text, step: text.upper(),
+        polisher=polisher,
     )
 
     result = processor.process("это ну значит вот тест")
@@ -337,14 +374,14 @@ def test_cleaned_text_is_reported_separately() -> None:
     """История хранит и очищенный, и итоговый текст."""
 
     def polisher(text: str, step: ProcessingStep) -> str:
-        return "Итоговая формулировка"
+        return "Final wording"
 
     processor = make(settings_with(clean_enabled=True), polisher=polisher)
 
     result = processor.process("ну короче надо переделать")
 
     assert result.cleaned == "Надо переделать"
-    assert result.text == "Итоговая формулировка"
+    assert result.text == "Final wording"
 
 
 def test_set_polisher_switches_behaviour() -> None:
@@ -370,10 +407,17 @@ def test_empty_input_stays_empty() -> None:
 @pytest.mark.parametrize("step", STEPS, ids=lambda step: step.id)
 def test_preview_runs_single_step(step: ProcessingStep) -> None:
     seen: list[str] = []
+
+    def polisher(text: str, s: ProcessingStep) -> str:
+        seen.append(s.id)
+        if s.id in ("translate", "prompt"):
+            # Кириллицу убираем (иначе guard), метки ⟦T…⟧ оставляем.
+            ascii_bits = "".join(ch if ord(ch) < 128 or ch in "⟦⟧" else " " for ch in text)
+            return f"Open {ascii_bits} please"
+        return f"{text}!"
+
     # Настройки все выключены: предпросмотр не должен на них смотреть.
-    processor = make(
-        settings_with(), polisher=lambda text, s: seen.append(s.id) or f"{text}!"
-    )
+    processor = make(settings_with(), polisher=polisher)
 
     result = processor.preview("надо открыть main.py", step.prompt_id)
 

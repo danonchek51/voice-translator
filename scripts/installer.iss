@@ -5,7 +5,7 @@
 ; установщик упаковывает готовый каталог dist\VoiceFlow.
 
 #define AppName "VoiceFlow"
-#define AppVersion "0.4.0"
+#define AppVersion "0.4.1"
 #define AppPublisher "VoiceFlow"
 #define AppExeName "VoiceFlow.exe"
 
@@ -23,6 +23,7 @@ OutputBaseFilename={#AppName}-{#AppVersion}-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\assets\voiceflow.ico
 UninstallDisplayIcon={app}\{#AppExeName}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible

@@ -160,10 +160,10 @@ def test_prompt_scaffold_echo_is_rejected(guard: Guard) -> None:
 def test_multiline_wrapping_quotes_are_stripped(guard: Guard) -> None:
     original = "добавь проверку пароля и форму входа"
     candidate = (
-        '"Реализовать вход в систему.\n\n'
-        "Требования:\n"
-        '- форма входа\n'
-        '- проверка пароля"'
+        '"Implement user login.\n\n'
+        "Requirements:\n"
+        '- login form\n'
+        '- password check"'
     )
 
     verdict = guard.check(original, candidate, mode="prompt")
@@ -176,6 +176,21 @@ def test_multiline_wrapping_quotes_are_stripped(guard: Guard) -> None:
 def test_instruction_mode_allows_expansion(guard: Guard) -> None:
     original = "надо сделать логин и чтобы пароль проверялся"
     candidate = (
+        "Implement user login.\n\n"
+        "Requirements:\n"
+        "- login form\n"
+        "- password check\n"
+    )
+
+    verdict = guard.check(original, candidate, mode="prompt")
+
+    assert verdict.accepted is True
+
+
+def test_russian_prompt_answer_is_rejected(guard: Guard) -> None:
+    """Модель иногда игнорирует «пиши по-английски» и отдаёт русский."""
+    original = "надо сделать логин и чтобы пароль проверялся"
+    candidate = (
         "Реализовать вход в систему.\n\n"
         "Требования:\n"
         "- форма входа\n"
@@ -184,7 +199,18 @@ def test_instruction_mode_allows_expansion(guard: Guard) -> None:
 
     verdict = guard.check(original, candidate, mode="prompt")
 
-    assert verdict.accepted is True
+    assert verdict.accepted is False
+    assert "английского" in verdict.reason
+
+
+def test_russian_translation_is_rejected(guard: Guard) -> None:
+    original = "надо переделать проект"
+    candidate = "Нужно переделать проект целиком."
+
+    verdict = guard.check(original, candidate, mode="translate")
+
+    assert verdict.accepted is False
+    assert "английского" in verdict.reason
 
 
 def test_unknown_mode_uses_default_bounds(guard: Guard) -> None:

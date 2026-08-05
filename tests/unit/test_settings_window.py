@@ -129,6 +129,22 @@ def test_tabs_declare_their_settings_sections(window) -> None:
     assert window.history.sections == ("history",)
 
 
+def test_close_hides_window_instead_of_destroying(window, qt_app) -> None:
+    """Крестик настроек не должен гасить приложение в трее."""
+    window.show()
+    qt_app.processEvents()
+    assert window.isVisible()
+
+    window.close()
+    qt_app.processEvents()
+
+    assert not window.isVisible()
+    # Окно живое: его можно снова открыть из трея.
+    window.open_at(0)
+    qt_app.processEvents()
+    assert window.isVisible()
+
+
 # --------------------------------------------------------------------------- #
 # Чтение и запись настроек
 # --------------------------------------------------------------------------- #

@@ -28,6 +28,10 @@ def run_ui(context: AppContext) -> int:
     app.setApplicationDisplayName("VoiceFlow")
     # Приложение живёт в трее: закрытие окна настроек не должно его завершать.
     app.setQuitOnLastWindowClosed(False)
+
+    from voiceflow.ui import icons
+
+    app.setWindowIcon(icons.app_icon())
     style.apply_to(app)
 
     controller = AppController(context)

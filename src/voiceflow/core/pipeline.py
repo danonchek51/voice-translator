@@ -304,6 +304,25 @@ class Pipeline:
         )
         if processed.fallback_reason:
             logger.info("Обработка без языковой модели: %s", processed.fallback_reason)
+            # Перевод и инструкция без модели молча оставляли русский текст —
+            # пользователь думал, что режим «не работает». Сообщаем явно.
+            requested = self.steps
+            needs_llm = any(step in ("translate", "prompt") for step in requested)
+            missed_english = needs_llm and not any(
+                step in processed.steps for step in ("translate", "prompt")
+            )
+            if missed_english:
+                self._bus.publish(
+                    NoticeIssued(
+                        source="text",
+                        message=(
+                            "Перевод или инструкция не применились: "
+                            f"{processed.fallback_reason}. "
+                            "Проверьте вкладку «Модели» — языковая модель должна "
+                            "быть скачана до конца."
+                        ),
+                    )
+                )
 
         # Пустой результат обработки — повод отдать хотя бы сырой текст,
         # иначе пользователь потеряет сказанное.

@@ -69,8 +69,17 @@ PROMPT_SCAFFOLD_MARKERS: tuple[str, ...] = (
     "убедись, что инструкция не включает в себя элементы, относящиеся к процессу",
 )
 
+#: Шаги, чей результат обязан быть английским. Кириллица в ответе —
+#: признак, что модель проигнорировала язык и ответ нельзя отдавать.
+ENGLISH_MODES: frozenset[str] = frozenset({"translate", "prompt"})
+
+#: Доля кириллических букв среди всех букв, выше которой ответ отклоняется.
+CYRILLIC_REJECT_RATIO = 0.25
+
 _NUMBER = re.compile(r"\d+")
 _FENCE = re.compile(r"^```[\w-]*\n(.*)\n```$", re.DOTALL)
+_LETTER = re.compile(r"[^\W\d_]", re.UNICODE)
+_CYRILLIC = re.compile(r"[А-Яа-яЁё]")
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,6 +119,9 @@ class Guard:
         if mode == "prompt" and _contains_prompt_scaffold(cleaned):
             return self._reject(original, "модель повторила правила инструкции")
 
+        if mode in ENGLISH_MODES and _cyrillic_ratio(cleaned) > CYRILLIC_REJECT_RATIO:
+            return self._reject(original, "ответ остался на русском вместо английского")
+
         lost = missing_tokens(cleaned, tokens or {})
         if lost:
             return self._reject(
@@ -147,6 +159,15 @@ def _contains_prompt_scaffold(text: str) -> bool:
     """Ответ пересказал заводской шаблон вместо инструкции пользователя."""
     lowered = text.casefold()
     return any(marker in lowered for marker in PROMPT_SCAFFOLD_MARKERS)
+
+
+def _cyrillic_ratio(text: str) -> float:
+    """Доля кириллицы среди букв. Без букв — 0: короткие коды не отклоняем."""
+    letters = _LETTER.findall(text)
+    if not letters:
+        return 0.0
+    cyrillic = sum(1 for char in letters if _CYRILLIC.fullmatch(char))
+    return cyrillic / len(letters)
 
 
 def _strip_wrappers(text: str) -> str:

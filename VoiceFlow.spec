@@ -2,13 +2,15 @@
 from PyInstaller.utils.hooks import collect_submodules
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('config', 'config')]
+datas = [('config', 'config'), ('assets', 'assets')]
 binaries = []
 hiddenimports = []
 hiddenimports += collect_submodules('voiceflow')
 tmp_ret = collect_all('onnx_asr')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('vosk')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('faster_whisper')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
@@ -43,6 +45,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=['assets\\voiceflow.ico'],
 )
 coll = COLLECT(
     exe,
