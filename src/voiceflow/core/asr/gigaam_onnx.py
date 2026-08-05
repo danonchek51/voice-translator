@@ -62,6 +62,12 @@ MODEL_FILE_PREFIX: dict[str, str] = {
 }
 
 
+#: На очень длинной записи onnxruntime падает на broadcast внутри энкодера
+#: (в логе пользователя: 5000 vs 5114). Режем на куски с небольшим запасом.
+MAX_CHUNK_SECONDS = 45.0
+CHUNK_OVERLAP_SECONDS = 0.5
+
+
 def _session_options() -> object | None:
     """Ограничивает распознавание частью ядер.
 
@@ -159,7 +165,27 @@ class GigaAmTranscriber(Transcriber):
     ) -> tuple[str, str]:
         model: Any = self._model
         # GigaAM одноязычная: параметр языка ей передавать нечего.
-        text = model.recognize(audio, sample_rate=sample_rate)
-        if isinstance(text, list):
-            text = " ".join(str(part) for part in text)
-        return str(text), "ru"
+        samples = np.asarray(audio, dtype=np.float32).reshape(-1)
+        max_samples = int(MAX_CHUNK_SECONDS * sample_rate)
+        if samples.size <= max_samples:
+            text = model.recognize(samples, sample_rate=sample_rate)
+            if isinstance(text, list):
+                text = " ".join(str(part) for part in text)
+            return str(text), "ru"
+
+        overlap = int(CHUNK_OVERLAP_SECONDS * sample_rate)
+        parts: list[str] = []
+        start = 0
+        while start < samples.size:
+            end = min(samples.size, start + max_samples)
+            chunk = samples[start:end]
+            piece = model.recognize(chunk, sample_rate=sample_rate)
+            if isinstance(piece, list):
+                piece = " ".join(str(part) for part in piece)
+            value = str(piece).strip()
+            if value:
+                parts.append(value)
+            if end >= samples.size:
+                break
+            start = max(end - overlap, start + 1)
+        return " ".join(parts), "ru"

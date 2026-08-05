@@ -15,7 +15,6 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QApplication,
-    QDialog,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -76,8 +75,13 @@ def _scrollable(tab: SettingsTab) -> QScrollArea:
     return area
 
 
-class SettingsWindow(QDialog):
-    """Обычное окно: его закрытие не завершает приложение."""
+class SettingsWindow(QWidget):
+    """Обычное окно: его закрытие не завершает приложение.
+
+    Намеренно не :class:`QDialog`: диалог на Windows иногда исчезает при
+    работе с меню трея (потеря активации / Escape), а настройки должны
+    оставаться открытыми, пока пользователь сам не нажмёт «Закрыть».
+    """
 
     settings_saved = Signal()
     #: Оформление на предпросмотре: настройки ещё не сохранены.
@@ -107,6 +111,9 @@ class SettingsWindow(QDialog):
         self._store = store
 
         self.setWindowTitle("Настройки VoiceFlow")
+        # Обычное окно, не модальный диалог: клик по трею не должен его прятать.
+        self.setWindowFlags(Qt.WindowType.Window)
+        self.setWindowModality(Qt.WindowModality.NonModal)
         self.resize(900, 680)
         self._limit_height()
 

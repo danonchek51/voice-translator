@@ -47,11 +47,19 @@ def test_toggling_a_step_reports_it(tray) -> None:  # type: ignore[no-untyped-de
     seen: list[tuple[str, bool]] = []
     tray.step_toggled.connect(lambda step_id, on: seen.append((step_id, on)))
 
-    action = tray._step_actions["translate"]
-    action.setChecked(True)
-    action.trigger()
+    box = tray._step_actions["translate"]
+    box.setChecked(True)
 
-    assert seen and seen[-1][0] == "translate"
+    assert seen and seen[-1] == ("translate", True)
+
+
+def test_step_widgets_keep_menu_open(tray) -> None:  # type: ignore[no-untyped-def]
+    """Шаги сидят на QWidgetAction — иначе клик закрывает всё меню трея."""
+    from PySide6.QtWidgets import QWidgetAction
+
+    actions = tray._steps_menu.actions()
+    assert actions
+    assert all(isinstance(action, QWidgetAction) for action in actions)
 
 
 def test_menu_shows_current_state(tray) -> None:  # type: ignore[no-untyped-def]
@@ -65,7 +73,7 @@ def test_preset_selection_reports_it(tray) -> None:  # type: ignore[no-untyped-d
     chosen: list[str] = []
     tray.preset_selected.connect(chosen.append)
 
-    tray._preset_actions["light"].trigger()
+    tray._preset_actions["light"].setChecked(True)
 
     assert chosen == ["light"]
 

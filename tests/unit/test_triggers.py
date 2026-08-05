@@ -152,11 +152,14 @@ def test_hold_press_while_recording_does_nothing(
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("source", [TriggerSource.TRAY, TriggerSource.OVERLAY])
+@pytest.mark.parametrize(
+    "source",
+    [TriggerSource.TRAY, TriggerSource.OVERLAY, TriggerSource.VOICE],
+)
 def test_menu_and_overlay_always_toggle(
     source: TriggerSource, recorder: Recorder, clock: Clock
 ) -> None:
-    """Пункт меню нельзя удерживать, поэтому он всегда работает переключателем."""
+    """Пункт меню и голосовая фраза нельзя удерживать — всегда переключатель."""
     coordinator = make("hold", recorder, clock)
 
     assert coordinator.press(source) is TriggerAction.START

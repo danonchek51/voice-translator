@@ -139,6 +139,40 @@ def test_translation_may_be_much_shorter(guard: Guard) -> None:
     assert verdict.accepted is True
 
 
+def test_prompt_scaffold_echo_is_rejected(guard: Guard) -> None:
+    """Реальный баг из истории Downloads: модель повторила шаблон инструкции."""
+    original = (
+        "Нужно исправить в трее, когда мы выбираем режим у нас трей закрывается. "
+        "Этого не должно быть."
+    )
+    candidate = (
+        "Собери из сказанного чёткую задачу:\n"
+        "Нужно исправить поведение приложения.\n"
+        "- При нажатии на любые настройки трей должен немедленно закрываться.\n"
+    )
+
+    verdict = guard.check(original, candidate, mode="prompt")
+
+    assert verdict.accepted is False
+    assert "правил" in verdict.reason
+
+
+def test_multiline_wrapping_quotes_are_stripped(guard: Guard) -> None:
+    original = "добавь проверку пароля и форму входа"
+    candidate = (
+        '"Реализовать вход в систему.\n\n'
+        "Требования:\n"
+        '- форма входа\n'
+        '- проверка пароля"'
+    )
+
+    verdict = guard.check(original, candidate, mode="prompt")
+
+    assert verdict.accepted is True
+    assert not verdict.text.startswith('"')
+    assert not verdict.text.endswith('"')
+
+
 def test_instruction_mode_allows_expansion(guard: Guard) -> None:
     original = "надо сделать логин и чтобы пароль проверялся"
     candidate = (

@@ -31,8 +31,11 @@ class TriggerSource(Enum):
     VOICE = "voice"
 
 
-#: Источники, у которых нет «отпускания»: пункт меню нельзя удерживать.
-CLICK_ONLY_SOURCES = frozenset({TriggerSource.TRAY, TriggerSource.OVERLAY})
+#: Источники, у которых нет «отпускания»: пункт меню и голосовая фраза
+#: срабатывают один раз, их нельзя «удерживать» как кнопку мыши.
+CLICK_ONLY_SOURCES = frozenset(
+    {TriggerSource.TRAY, TriggerSource.OVERLAY, TriggerSource.VOICE}
+)
 
 
 class TriggerAction(Enum):

@@ -63,7 +63,8 @@ PROMPT = ProcessingStep(
     title="Инструкция для AI",
     description=(
         "Превращает поток мыслей в краткую структурированную инструкцию "
-        "для другой модели."
+        "для другой модели. Нельзя включать вместе с переводом: получится "
+        "каша из двух задач."
     ),
     prompt_id="prompt_engineer",
     enabled_by="prompt_mode_enabled",
@@ -78,6 +79,10 @@ STEPS_BY_ID: dict[str, ProcessingStep] = {step.id: step for step in STEPS}
 
 STEPS_BY_PROMPT: dict[str, ProcessingStep] = {step.prompt_id: step for step in STEPS}
 
+#: Перевод и «Инструкция» решают разные задачи. Вместе в истории пользователя
+#: давали ответ, где модель повторяла свой шаблон вместо текста.
+EXCLUSIVE_STEP_IDS: frozenset[str] = frozenset({"translate", "prompt"})
+
 #: Что показывать на плашке, когда включённых шагов нет.
 RAW_LABEL = "Готовлю"
 
@@ -89,6 +94,32 @@ def get_step(step_id: str) -> ProcessingStep | None:
 def step_for_prompt(prompt_id: str) -> ProcessingStep | None:
     """Шаг, который использует эту инструкцию. Нужен редактору инструкций."""
     return STEPS_BY_PROMPT.get(prompt_id)
+
+
+def apply_step_enabled(
+    settings: ProcessingSettings, step_id: str, enabled: bool
+) -> list[str]:
+    """Включает или выключает шаг с учётом взаимных исключений.
+
+    Возвращает список человекочитаемых побочных изменений (что выключили).
+    """
+    step = get_step(step_id)
+    if step is None:
+        return []
+
+    notes: list[str] = []
+    setattr(settings, step.enabled_by, enabled)
+    if enabled and step_id in EXCLUSIVE_STEP_IDS:
+        for other_id in EXCLUSIVE_STEP_IDS:
+            if other_id == step_id:
+                continue
+            other = get_step(other_id)
+            if other is None:
+                continue
+            if getattr(settings, other.enabled_by, False):
+                setattr(settings, other.enabled_by, False)
+                notes.append(f"выключен шаг «{other.title}»")
+    return notes
 
 
 def enabled_steps(settings: ProcessingSettings) -> list[ProcessingStep]:

@@ -168,7 +168,15 @@ def test_available_lists_prompts_with_modification_flag(library: PromptLibrary) 
     items = {info.id: info for info in library.available()}
 
     assert items["sample"].is_user_override is True
-    assert items["_shared_rules"].is_user_override is False
+    # Служебные includes с «_» в списке настроек не показываем.
+    assert "_shared_rules" not in items
+
+
+def test_available_hides_underscore_includes(library: PromptLibrary) -> None:
+    ids = {info.id for info in library.available()}
+
+    assert "_shared_rules" not in ids
+    assert "sample" in ids
 
 
 def test_available_includes_user_only_prompts(library: PromptLibrary) -> None:

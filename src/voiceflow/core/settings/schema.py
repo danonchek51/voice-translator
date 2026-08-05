@@ -355,6 +355,18 @@ def validate(settings: Settings) -> list[str]:
         notes.append("activation.stop_phrase: пустая фраза, использую заводскую")
         settings.activation.stop_phrase = defaults.activation.stop_phrase
 
+    # Перевод и «Инструкция» вместе в истории пользователя давали кашу:
+    # модель повторяла шаблон вместо текста. Оставляем инструкцию.
+    if (
+        settings.processing.translate_enabled
+        and settings.processing.prompt_mode_enabled
+    ):
+        settings.processing.translate_enabled = False
+        notes.append(
+            "processing: перевод и «Инструкция для AI» нельзя включать вместе, "
+            "перевод выключен"
+        )
+
     return notes
 
 

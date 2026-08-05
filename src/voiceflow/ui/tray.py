@@ -7,13 +7,32 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QObject, Signal
-from PySide6.QtGui import QAction, QActionGroup
-from PySide6.QtWidgets import QMenu, QSystemTrayIcon
+from PySide6.QtGui import QAction
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QMenu,
+    QRadioButton,
+    QSystemTrayIcon,
+    QWidgetAction,
+)
 
 from voiceflow.core.models.presets import list_presets
 from voiceflow.core.state import AppState
 from voiceflow.core.text.modes import STEPS
 from voiceflow.ui import icons, theme
+
+
+def _widget_action(menu: QMenu, widget: QCheckBox | QRadioButton) -> QWidgetAction:
+    """Пункт меню на виджете: клик не закрывает меню трея.
+
+    Обычный :class:`QAction` после ``triggered`` прячет всё контекстное меню —
+    переключить два шага подряд становится невозможно. У ``QWidgetAction``
+    Qt оставляет меню открытым.
+    """
+    action = QWidgetAction(menu)
+    action.setDefaultWidget(widget)
+    menu.addAction(action)
+    return action
 
 
 class TrayIcon(QObject):
@@ -60,32 +79,32 @@ class TrayIcon(QObject):
         # Шаги обработки переключаются прямо здесь: это самое частое действие,
         # и ради него открывать окно настроек незачем.
         self._steps_menu = QMenu("Обработка", self._menu)
-        self._step_actions: dict[str, QAction] = {}
+        self._step_checks: dict[str, QCheckBox] = {}
+        # Совместимость с тестами: прежнее имя хранит те же виджеты.
+        self._step_actions: dict[str, QCheckBox] = self._step_checks
         for step in STEPS:
-            action = QAction(step.title, self._steps_menu)
-            action.setCheckable(True)
-            action.setToolTip(step.description)
-            action.triggered.connect(
+            box = QCheckBox(step.title)
+            box.setToolTip(step.description)
+            box.toggled.connect(
                 lambda checked, step_id=step.id: self.step_toggled.emit(step_id, checked)
             )
-            self._steps_menu.addAction(action)
-            self._step_actions[step.id] = action
+            _widget_action(self._steps_menu, box)
+            self._step_checks[step.id] = box
 
         # Пресет меняет сразу и движок, и участие языковой модели.
         self._preset_menu = QMenu("Качество", self._menu)
-        self._preset_group = QActionGroup(self._preset_menu)
-        self._preset_group.setExclusive(True)
-        self._preset_actions: dict[str, QAction] = {}
+        self._preset_radios: dict[str, QRadioButton] = {}
+        self._preset_actions: dict[str, QRadioButton] = self._preset_radios
         for preset in list_presets():
-            action = QAction(preset.title, self._preset_menu)
-            action.setCheckable(True)
-            action.setToolTip(preset.summary)
-            action.triggered.connect(
-                lambda checked, preset_id=preset.id: self.preset_selected.emit(preset_id)
+            radio = QRadioButton(preset.title)
+            radio.setToolTip(preset.summary)
+            radio.toggled.connect(
+                lambda checked, preset_id=preset.id: (
+                    self.preset_selected.emit(preset_id) if checked else None
+                )
             )
-            self._preset_group.addAction(action)
-            self._preset_menu.addAction(action)
-            self._preset_actions[preset.id] = action
+            _widget_action(self._preset_menu, radio)
+            self._preset_radios[preset.id] = radio
 
         self._steps_action = QAction("Обработка: —", self._menu)
         self._steps_action.setEnabled(False)
@@ -168,14 +187,22 @@ class TrayIcon(QObject):
 
     def set_step_states(self, enabled: dict[str, bool]) -> None:
         """Отмечает включённые шаги в подменю."""
-        for step_id, action in self._step_actions.items():
-            action.setChecked(bool(enabled.get(step_id)))
+        for step_id, box in self._step_checks.items():
+            wanted = bool(enabled.get(step_id))
+            if box.isChecked() == wanted:
+                continue
+            box.blockSignals(True)
+            box.setChecked(wanted)
+            box.blockSignals(False)
 
     def set_preset(self, preset: str) -> None:
         """Отмечает выбранный пресет."""
-        action = self._preset_actions.get(preset)
-        if action is not None:
-            action.setChecked(True)
+        radio = self._preset_radios.get(preset)
+        if radio is None or radio.isChecked():
+            return
+        radio.blockSignals(True)
+        radio.setChecked(True)
+        radio.blockSignals(False)
 
     def set_step_available(self, step_id: str, available: bool, reason: str = "") -> None:
         """Гасит шаг, который сейчас не сработает.
@@ -183,12 +210,12 @@ class TrayIcon(QObject):
         Перевод и «Инструкция» без языковой модели молча ничего не делают —
         честнее показать это в меню, чем дать включить впустую.
         """
-        action = self._step_actions.get(step_id)
-        if action is None:
+        box = self._step_checks.get(step_id)
+        if box is None:
             return
-        action.setEnabled(available)
+        box.setEnabled(available)
         if not available and reason:
-            action.setToolTip(reason)
+            box.setToolTip(reason)
 
     def notify(self, title: str, message: str, error: bool = False) -> None:
         """Всплывающее уведомление. Только для ошибок и долгих операций."""

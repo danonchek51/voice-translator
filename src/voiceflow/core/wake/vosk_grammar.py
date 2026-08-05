@@ -49,13 +49,19 @@ class VoskGrammarDetector(WakeWordDetector):
             return False
 
     def set_phrases(self, phrases: list[str]) -> None:
-        normalized = [normalize_phrase(p) for p in phrases if normalize_phrase(p)]
-        # Уникальные слова для грамматики.
-        words: set[str] = set()
-        for phrase in normalized:
-            words.update(phrase.split())
+        # Грамматика Vosk — список целых высказываний-альтернатив.
+        # Если разрезать фразу на слова, распознаватель вернёт «слушай» или
+        # «сюда» по отдельности, и сравнение с «слушай сюда» никогда не сойдётся.
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for phrase in phrases:
+            value = normalize_phrase(phrase)
+            if not value or value in seen:
+                continue
+            seen.add(value)
+            normalized.append(value)
         self._phrases = normalized
-        self._rebuild(sorted(words))
+        self._rebuild(normalized)
 
     def _ensure_model(self) -> object:
         if self._model is not None:
@@ -71,9 +77,9 @@ class VoskGrammarDetector(WakeWordDetector):
         self._model = Model(str(self._model_dir))
         return self._model
 
-    def _rebuild(self, words: list[str]) -> None:
+    def _rebuild(self, phrases: list[str]) -> None:
         self._recognizer = None
-        if not words:
+        if not phrases:
             return
         try:
             model = self._ensure_model()
@@ -82,7 +88,7 @@ class VoskGrammarDetector(WakeWordDetector):
             return
         from vosk import KaldiRecognizer
 
-        grammar = json.dumps([*words, "[unk]"], ensure_ascii=False)
+        grammar = json.dumps([*phrases, "[unk]"], ensure_ascii=False)
         self._recognizer = KaldiRecognizer(model, 16_000, grammar)
 
     def process(self, audio: np.ndarray, sample_rate: int) -> WakeHit | None:

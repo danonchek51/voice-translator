@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from voiceflow.core.settings.schema import Settings
-from voiceflow.core.text.modes import STEPS, describe
+from voiceflow.core.text.modes import STEPS, apply_step_enabled, describe
 from voiceflow.ui.hints import PROCESSING
 from voiceflow.ui.settings_window.common import SettingsTab
 
@@ -41,16 +41,20 @@ class ProcessingTab(SettingsTab):
         steps_layout = QVBoxLayout(steps)
         steps_layout.addWidget(
             QLabel(
-                "Шаги применяются по порядку. Выключите все — получите "
-                "дословный текст."
+                "Шаги применяются по порядку. Перевод и «Инструкция для AI» "
+                "взаимоисключающие: вместе они портят результат. "
+                "Выключите все — получите дословный текст."
             )
         )
 
         self.step_boxes: dict[str, QCheckBox] = {}
+        self._updating_exclusive = False
         for step in STEPS:
             box = QCheckBox(step.title)
             box.setToolTip(step.description)
-            box.toggled.connect(self._update_chain)
+            box.toggled.connect(
+                lambda checked, step_id=step.id: self._on_step_toggled(step_id, checked)
+            )
             steps_layout.addWidget(box)
             hint = QLabel(step.description)
             hint.setWordWrap(True)
@@ -111,6 +115,20 @@ class ProcessingTab(SettingsTab):
         layout.addStretch(1)
         self.add_reset_row(layout)
 
+    def _on_step_toggled(self, step_id: str, checked: bool) -> None:
+        """Перевод и «Инструкция» не уживаются — вторую галочку снимаем сами."""
+        if self._updating_exclusive:
+            self._update_chain()
+            return
+        if checked and step_id in ("translate", "prompt"):
+            other = "prompt" if step_id == "translate" else "translate"
+            box = self.step_boxes.get(other)
+            if box is not None and box.isChecked():
+                self._updating_exclusive = True
+                box.setChecked(False)
+                self._updating_exclusive = False
+        self._update_chain()
+
     def _update_chain(self) -> None:
         """Показывает итоговую цепочку по текущим галочкам."""
         chosen = [step.title for step in STEPS if self.step_boxes[step.id].isChecked()]
@@ -132,10 +150,15 @@ class ProcessingTab(SettingsTab):
 
     def load_from(self, settings: Settings) -> None:
         processing = settings.processing
+        # Старые профили могли включить перевод и инструкцию вместе — в истории
+        # Downloads это давало ответ с заводским шаблоном вместо текста.
+        if processing.translate_enabled and processing.prompt_mode_enabled:
+            processing.translate_enabled = False
         for step in STEPS:
-            self.step_boxes[step.id].setChecked(
-                bool(getattr(processing, step.enabled_by, False))
-            )
+            box = self.step_boxes[step.id]
+            box.blockSignals(True)
+            box.setChecked(bool(getattr(processing, step.enabled_by, False)))
+            box.blockSignals(False)
         self._update_chain()
         self.glossary_enabled.setChecked(processing.glossary_enabled)
         self.use_llm.setChecked(processing.use_llm)
@@ -152,7 +175,9 @@ class ProcessingTab(SettingsTab):
     def apply_to(self, settings: Settings) -> None:
         processing = settings.processing
         for step in STEPS:
-            setattr(processing, step.enabled_by, self.step_boxes[step.id].isChecked())
+            apply_step_enabled(
+                processing, step.id, self.step_boxes[step.id].isChecked()
+            )
         processing.glossary_enabled = self.glossary_enabled.isChecked()
         processing.use_llm = self.use_llm.isChecked()
         processing.guard_strict = self.guard_strict.isChecked()

@@ -32,7 +32,7 @@ from voiceflow.core.models.presets import apply_preset
 from voiceflow.core.pipeline import Pipeline
 from voiceflow.core.state import AppState
 from voiceflow.core.text.glossary import Glossary
-from voiceflow.core.text.modes import STEPS, describe, get_step
+from voiceflow.core.text.modes import STEPS, apply_step_enabled, describe, get_step
 from voiceflow.core.text.processor import TextProcessor
 from voiceflow.core.triggers import TriggerSource
 from voiceflow.core.wake import WakeService
@@ -587,18 +587,25 @@ class AppController(QObject):
         if step is None:
             return
         settings = self._context.settings
-        setattr(settings.processing, step.enabled_by, enabled)
+        current = bool(getattr(settings.processing, step.enabled_by, False))
+        if current == enabled:
+            return
+        notes = apply_step_enabled(settings.processing, step_id, enabled)
         for note in self._context.settings_store.save(settings):
             logger.warning("Настройки: %s", note)
         logger.info("Шаг «%s»: %s", step.title, "включён" if enabled else "выключен")
+        for note in notes:
+            logger.info("Обработка: %s", note)
         self._refresh_steps()
-        if self._settings_window is not None:
-            self._settings_window.reload()
+        # Только синхронизируем поля: не активируем окно и не закрываем его.
+        self._sync_settings_window()
 
     @Slot(str)
     def _on_preset_selected(self, preset: str) -> None:
         """Пресет выбран из меню трея."""
         settings = self._context.settings
+        if settings.recognition.preset == preset:
+            return
         changes = apply_preset(settings, preset)
         if not changes:
             return
@@ -675,14 +682,24 @@ class AppController(QObject):
         self._llm.reload()
         logger.info("Языковая модель выбрана автоматически: %s", found.name)
 
+    def _sync_settings_window(self) -> None:
+        """Подтягивает значения в открытое окно настроек без смены фокуса.
+
+        Переключение шагов из трея не должно прятать или активировать окно:
+        иначе кажется, что «настройки закрылись после клика».
+        """
+        window = self._settings_window
+        if window is None or not window.isVisible():
+            return
+        window.reload()
+
     @Slot(str)
     def _on_preset_applied(self, preset: str) -> None:
         """Смена пресета меняет набор моделей, поэтому кэш движков сбрасывается."""
         logger.info("Применён пресет «%s»", preset)
         self._ensure_llm_model_path()
         self._transcribers.invalidate()
-        if self._settings_window is not None:
-            self._settings_window.reload()
+        self._sync_settings_window()
         self._context.bus.publish(SettingsChanged(sections=frozenset({"recognition"})))
 
     @Slot()

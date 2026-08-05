@@ -113,6 +113,8 @@ class PromptLibrary:
 
         result: list[PromptInfo] = []
         for prompt_id in sorted(ids):
+            if prompt_id.startswith("_"):
+                continue
             try:
                 prompt = self.load(prompt_id)
             except PromptError:

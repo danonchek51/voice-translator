@@ -56,6 +56,18 @@ META_PREFIXES: tuple[str, ...] = (
     "translation",
 )
 
+#: Фразы из заводских инструкций: если они всплыли в ответе, модель
+#: пересказала правила вместо результата. История пользователя это ловила.
+PROMPT_SCAFFOLD_MARKERS: tuple[str, ...] = (
+    "собери из сказанного",
+    "поток мыслей человека",
+    "поток мыслей:",
+    "критически важно:",
+    "перед тобой поток",
+    "напиши инструкцию для другой ai-модели, описывающую, как исправить",
+    "убедись, что инструкция не включает в себя элементы, относящиеся к процессу",
+)
+
 _NUMBER = re.compile(r"\d+")
 _FENCE = re.compile(r"^```[\w-]*\n(.*)\n```$", re.DOTALL)
 
@@ -94,6 +106,9 @@ class Guard:
         if stripped_meta and self._strict:
             logger.debug("Из ответа модели срезано вступление")
 
+        if mode == "prompt" and _contains_prompt_scaffold(cleaned):
+            return self._reject(original, "модель повторила правила инструкции")
+
         lost = missing_tokens(cleaned, tokens or {})
         if lost:
             return self._reject(
@@ -127,6 +142,12 @@ class Guard:
         return GuardVerdict(accepted=False, text=original, reason=reason)
 
 
+def _contains_prompt_scaffold(text: str) -> bool:
+    """Ответ пересказал заводской шаблон вместо инструкции пользователя."""
+    lowered = text.casefold()
+    return any(marker in lowered for marker in PROMPT_SCAFFOLD_MARKERS)
+
+
 def _strip_wrappers(text: str) -> str:
     """Убирает блок кода и обрамляющие кавычки, которыми модель любит обёртывать."""
     result = text.strip()
@@ -135,13 +156,15 @@ def _strip_wrappers(text: str) -> str:
     if fenced:
         result = fenced.group(1).strip()
 
-    pairs = (('"', '"'), ("«", "»"), ("'", "'"), ("“", "”"))
-    for opening, closing in pairs:
-        if len(result) > 2 and result.startswith(opening) and result.endswith(closing):
-            inner = result[1:-1]
-            # Снимаем кавычки, только если внутри нет своей пары.
-            if opening not in inner and closing not in inner:
-                result = inner.strip()
+    # Многострочный ответ часто целиком в одних кавычках — снимаем внешний слой,
+    # даже если внутри есть другие кавычки: иначе в буфер уходит обёртка.
+    if len(result) > 2 and result[0] == result[-1] and result[0] in "\"'":
+        result = result[1:-1].strip()
+    else:
+        pairs = (("«", "»"), ("“", "”"))
+        for opening, closing in pairs:
+            if len(result) > 2 and result.startswith(opening) and result.endswith(closing):
+                result = result[1:-1].strip()
                 break
     return result
 
