@@ -41,7 +41,7 @@ def make(
 # --------------------------------------------------------------------------- #
 
 
-def test_step_order_is_fixed() -> None:
+def test_default_registry_order() -> None:
     assert [step.id for step in STEPS] == ["clean", "translate", "prompt"]
 
 

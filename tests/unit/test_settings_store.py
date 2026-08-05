@@ -175,7 +175,14 @@ def test_invalid_values_are_repaired_with_notes(tmp_path: Path) -> None:
     assert settings.activation.stop_mode == Settings().activation.stop_mode
     assert settings.activation.sensitivity == 10
     assert settings.history.max_entries == 50
-    assert len(store.notes) == 3
+    # Миграция схемы может добавить служебную заметку про резервную копию.
+    repaired = [
+        note
+        for note in store.notes
+        if "stop_mode" in note or "sensitivity" in note or "max_entries" in note
+    ]
+    assert len(repaired) == 3
+    assert len(store.notes) >= 3
 
 
 def test_wrong_types_fall_back_to_defaults(tmp_path: Path) -> None:

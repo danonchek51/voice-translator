@@ -25,10 +25,10 @@ from voiceflow.core.wake.registry import create_wake_detector
 logger = logging.getLogger(__name__)
 
 #: Сегмент речи для детектора, секунды.
-SEGMENT_MIN_SECONDS = 0.6
+SEGMENT_MIN_SECONDS = 0.35
 SEGMENT_MAX_SECONDS = 2.0
 #: Пауза до/после фразы, чтобы отсечь слитную речь.
-EDGE_SILENCE_SECONDS = 0.3
+EDGE_SILENCE_SECONDS = 0.2
 
 
 class WakeService:
@@ -51,7 +51,7 @@ class WakeService:
         self._state = state
         self._on_start = on_start
         self._on_stop = on_stop
-        self._vad = vad or create_vad()
+        self._vad = vad or create_vad(threshold=0.35)
         self._detector = detector or create_wake_detector()
         self._clock = clock
         self._debug = debug

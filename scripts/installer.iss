@@ -5,7 +5,7 @@
 ; установщик упаковывает готовый каталог dist\VoiceFlow.
 
 #define AppName "VoiceFlow"
-#define AppVersion "0.3.0"
+#define AppVersion "0.4.0"
 #define AppPublisher "VoiceFlow"
 #define AppExeName "VoiceFlow.exe"
 

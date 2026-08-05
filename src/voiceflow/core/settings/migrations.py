@@ -87,10 +87,23 @@ def _migrate_1_to_2(data: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _migrate_2_to_3(data: dict[str, Any]) -> dict[str, Any]:
+    """Добавляет настраиваемый порядок шагов обработки."""
+    result = dict(data)
+    processing = result.get("processing")
+    if isinstance(processing, dict):
+        processing = dict(processing)
+        processing.setdefault("step_order", ["clean", "translate", "prompt"])
+        result["processing"] = processing
+    result["schema_version"] = 3
+    return result
+
+
 #: Ключ — версия, из которой поднимаемся.
 MIGRATIONS: dict[int, Migration] = {
     0: _migrate_0_to_1,
     1: _migrate_1_to_2,
+    2: _migrate_2_to_3,
 }
 
 

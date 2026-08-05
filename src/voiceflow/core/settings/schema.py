@@ -16,7 +16,7 @@ from dataclasses import dataclass, field, fields, is_dataclass
 from typing import Any
 
 #: Версия схемы. Увеличивается вместе с добавлением миграции.
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 
 
 # --------------------------------------------------------------------------- #
@@ -76,8 +76,8 @@ class RecognitionSettings:
 class ProcessingSettings:
     """Обработка — цепочка шагов, каждый включается своим флагом.
 
-    Выбора режима нет: включённые шаги применяются по порядку. Если выключены
-    все три, пользователь получает дословный текст.
+    Порядок задаётся ``step_order``. Если выключены все три, пользователь
+    получает дословный текст.
     """
 
     use_llm: bool = True
@@ -86,6 +86,8 @@ class ProcessingSettings:
     #: всего, и включать их пользователь должен осознанно.
     translate_enabled: bool = False
     prompt_mode_enabled: bool = False
+    #: Порядок шагов: идентификаторы ``clean``, ``translate``, ``prompt``.
+    step_order: tuple[str, ...] = ("clean", "translate", "prompt")
     glossary_enabled: bool = True
     guard_strict: bool = True
 
@@ -253,6 +255,10 @@ def _coerce(value: Any, annotation: Any) -> Any:
         return _UNSET
     if "str" in text:
         return value if isinstance(value, str) else _UNSET
+    if "tuple" in text or "list" in text:
+        if isinstance(value, list | tuple):
+            return tuple(str(item) for item in value)
+        return _UNSET
     return _UNSET
 
 
@@ -355,17 +361,12 @@ def validate(settings: Settings) -> list[str]:
         notes.append("activation.stop_phrase: пустая фраза, использую заводскую")
         settings.activation.stop_phrase = defaults.activation.stop_phrase
 
-    # Перевод и «Инструкция» вместе в истории пользователя давали кашу:
-    # модель повторяла шаблон вместо текста. Оставляем инструкцию.
-    if (
-        settings.processing.translate_enabled
-        and settings.processing.prompt_mode_enabled
-    ):
-        settings.processing.translate_enabled = False
-        notes.append(
-            "processing: перевод и «Инструкция для AI» нельзя включать вместе, "
-            "перевод выключен"
-        )
+    from voiceflow.core.text.modes import normalize_step_order
+
+    ordered = normalize_step_order(settings.processing.step_order)
+    if ordered != tuple(settings.processing.step_order):
+        settings.processing.step_order = ordered
+        notes.append("processing.step_order: порядок шагов приведён к допустимому")
 
     return notes
 

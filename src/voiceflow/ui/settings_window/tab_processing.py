@@ -1,8 +1,7 @@
 """Вкладка «Обработка».
 
-Выбора режима здесь нет: обработка — цепочка шагов, каждый включается своей
-галочкой. Порядок фиксирован, поэтому вкладка показывает итоговую цепочку
-одной строкой — чтобы было видно, что произойдёт с текстом.
+Обработка — цепочка шагов. Каждый включается галочкой, порядок меняется
+кнопками «выше / ниже». Итоговая цепочка видна одной строкой.
 """
 
 from __future__ import annotations
@@ -12,13 +11,21 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
+    QPushButton,
     QSpinBox,
     QVBoxLayout,
+    QWidget,
 )
 
 from voiceflow.core.settings.schema import Settings
-from voiceflow.core.text.modes import STEPS, apply_step_enabled, describe
+from voiceflow.core.text.modes import (
+    STEPS,
+    STEPS_BY_ID,
+    describe,
+    normalize_step_order,
+)
 from voiceflow.ui.hints import PROCESSING
 from voiceflow.ui.settings_window.common import SettingsTab
 
@@ -41,32 +48,56 @@ class ProcessingTab(SettingsTab):
         steps_layout = QVBoxLayout(steps)
         steps_layout.addWidget(
             QLabel(
-                "Шаги применяются по порядку. Перевод и «Инструкция для AI» "
-                "взаимоисключающие: вместе они портят результат. "
+                "Шаги можно включать вместе и менять порядок. "
+                "«Инструкция для AI» всегда выдаёт английский промпт. "
                 "Выключите все — получите дословный текст."
             )
         )
 
+        self._order: list[str] = [step.id for step in STEPS]
         self.step_boxes: dict[str, QCheckBox] = {}
-        self._updating_exclusive = False
+        self._step_rows: dict[str, QWidget] = {}
+        self._steps_host = QVBoxLayout()
+        steps_layout.addLayout(self._steps_host)
+
         for step in STEPS:
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
             box = QCheckBox(step.title)
             box.setToolTip(step.description)
-            box.toggled.connect(
-                lambda checked, step_id=step.id: self._on_step_toggled(step_id, checked)
-            )
-            steps_layout.addWidget(box)
+            box.toggled.connect(self._update_chain)
+            up = QPushButton("↑")
+            up.setFixedWidth(28)
+            up.setToolTip("Выше в цепочке")
+            up.clicked.connect(lambda _=False, sid=step.id: self._move(sid, -1))
+            down = QPushButton("↓")
+            down.setFixedWidth(28)
+            down.setToolTip("Ниже в цепочке")
+            down.clicked.connect(lambda _=False, sid=step.id: self._move(sid, 1))
+            row_layout.addWidget(box, stretch=1)
+            row_layout.addWidget(up)
+            row_layout.addWidget(down)
+            self.step_boxes[step.id] = box
+            self._step_rows[step.id] = row
             hint = QLabel(step.description)
             hint.setWordWrap(True)
             hint.setProperty("role", "hint")
-            steps_layout.addWidget(hint)
-            self.step_boxes[step.id] = box
+            # hint живёт под чекбоксом внутри той же строки-колонки
+            wrap = QWidget()
+            wrap_layout = QVBoxLayout(wrap)
+            wrap_layout.setContentsMargins(0, 4, 0, 4)
+            wrap_layout.setSpacing(2)
+            wrap_layout.addWidget(row)
+            wrap_layout.addWidget(hint)
+            self._step_rows[step.id] = wrap
 
         self.chain = QLabel()
         self.chain.setWordWrap(True)
         self.chain.setProperty("role", "accent")
         steps_layout.addWidget(self.chain)
         layout.addWidget(steps)
+        self._rebuild_step_rows()
 
         text = QGroupBox("Текст")
         text_form = QFormLayout(text)
@@ -76,13 +107,8 @@ class ProcessingTab(SettingsTab):
             "Без модели остаётся только очистка по правилам: перевод "
             "и инструкция работать не будут"
         )
-        self.guard_strict = QCheckBox("Строгая проверка ответа модели с откатом")
-        self.guard_strict.setToolTip(
-            "Откат — штатная деградация: смысл важнее красивой формулировки"
-        )
         text_form.addRow(self.glossary_enabled)
         text_form.addRow(self.use_llm)
-        text_form.addRow(self.guard_strict)
         layout.addWidget(text)
 
         output = QGroupBox("Вывод результата")
@@ -99,49 +125,46 @@ class ProcessingTab(SettingsTab):
         self.confirm_if_window_changed = QCheckBox(
             "Не вставлять, если стало активным другое окно"
         )
-        self.restore_clipboard = QCheckBox("Возвращать прежнее содержимое буфера обмена")
-        self.restore_clipboard.setToolTip(
-            "Через несколько секунд после вставки в буфер вернётся то, что было "
-            "в нём раньше. Если вы за это время скопировали что-то своё, "
-            "возврат не выполняется."
-        )
         output_form.addRow(self.auto_paste)
         output_form.addRow("Задержка перед вставкой", self.paste_delay_ms)
         output_form.addRow("Способ вставки", self.paste_method)
         output_form.addRow(self.confirm_if_window_changed)
-        output_form.addRow(self.restore_clipboard)
         layout.addWidget(output)
 
         layout.addStretch(1)
         self.add_reset_row(layout)
 
-    def _on_step_toggled(self, step_id: str, checked: bool) -> None:
-        """Перевод и «Инструкция» не уживаются — вторую галочку снимаем сами."""
-        if self._updating_exclusive:
-            self._update_chain()
+    def _move(self, step_id: str, delta: int) -> None:
+        index = self._order.index(step_id)
+        target = index + delta
+        if target < 0 or target >= len(self._order):
             return
-        if checked and step_id in ("translate", "prompt"):
-            other = "prompt" if step_id == "translate" else "translate"
-            box = self.step_boxes.get(other)
-            if box is not None and box.isChecked():
-                self._updating_exclusive = True
-                box.setChecked(False)
-                self._updating_exclusive = False
+        self._order[index], self._order[target] = self._order[target], self._order[index]
+        self._rebuild_step_rows()
         self._update_chain()
 
+    def _rebuild_step_rows(self) -> None:
+        while self._steps_host.count():
+            item = self._steps_host.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+        for step_id in self._order:
+            self._steps_host.addWidget(self._step_rows[step_id])
+
     def _update_chain(self) -> None:
-        """Показывает итоговую цепочку по текущим галочкам."""
-        chosen = [step.title for step in STEPS if self.step_boxes[step.id].isChecked()]
+        """Показывает итоговую цепочку по текущим галочкам и порядку."""
+        chosen = [
+            STEPS_BY_ID[step_id].title
+            for step_id in self._order
+            if self.step_boxes[step_id].isChecked()
+        ]
         self.chain.setText(
             "Итог: " + (" → ".join(chosen) if chosen else "дословный текст без обработки")
         )
 
     def hint_targets(self) -> dict[str, QCheckBox]:
-        """Шаги обработки живут в словаре, а не в отдельных полях.
-
-        Ключом берётся имя настройки, а не идентификатор шага: у режима
-        «Инструкция» они различаются, и подсказка прошла бы мимо.
-        """
+        """Шаги обработки живут в словаре, а не в отдельных полях."""
         return {
             step.enabled_by: self.step_boxes[step.id]
             for step in STEPS
@@ -150,10 +173,8 @@ class ProcessingTab(SettingsTab):
 
     def load_from(self, settings: Settings) -> None:
         processing = settings.processing
-        # Старые профили могли включить перевод и инструкцию вместе — в истории
-        # Downloads это давало ответ с заводским шаблоном вместо текста.
-        if processing.translate_enabled and processing.prompt_mode_enabled:
-            processing.translate_enabled = False
+        self._order = list(normalize_step_order(processing.step_order))
+        self._rebuild_step_rows()
         for step in STEPS:
             box = self.step_boxes[step.id]
             box.blockSignals(True)
@@ -162,7 +183,6 @@ class ProcessingTab(SettingsTab):
         self._update_chain()
         self.glossary_enabled.setChecked(processing.glossary_enabled)
         self.use_llm.setChecked(processing.use_llm)
-        self.guard_strict.setChecked(processing.guard_strict)
 
         output = settings.output
         self.auto_paste.setChecked(output.auto_paste)
@@ -170,24 +190,20 @@ class ProcessingTab(SettingsTab):
         index = self.paste_method.findData(output.paste_method)
         self.paste_method.setCurrentIndex(max(0, index))
         self.confirm_if_window_changed.setChecked(output.confirm_if_window_changed)
-        self.restore_clipboard.setChecked(output.restore_clipboard)
 
     def apply_to(self, settings: Settings) -> None:
         processing = settings.processing
         for step in STEPS:
-            apply_step_enabled(
-                processing, step.id, self.step_boxes[step.id].isChecked()
-            )
+            setattr(processing, step.enabled_by, self.step_boxes[step.id].isChecked())
+        processing.step_order = tuple(self._order)
         processing.glossary_enabled = self.glossary_enabled.isChecked()
         processing.use_llm = self.use_llm.isChecked()
-        processing.guard_strict = self.guard_strict.isChecked()
 
         output = settings.output
         output.auto_paste = self.auto_paste.isChecked()
         output.paste_delay_ms = self.paste_delay_ms.value()
         output.paste_method = str(self.paste_method.currentData())
         output.confirm_if_window_changed = self.confirm_if_window_changed.isChecked()
-        output.restore_clipboard = self.restore_clipboard.isChecked()
 
     def chain_description(self, settings: Settings) -> str:
         return describe(settings.processing)

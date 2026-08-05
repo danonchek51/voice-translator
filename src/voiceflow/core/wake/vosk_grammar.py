@@ -1,6 +1,7 @@
 """Детектор команды на Vosk small-ru с ограниченной грамматикой.
 
 Проверенный запасной путь: модель небольшая, грамматика задаётся текстом.
+Аудио кормится короткими кусками — так Vosk стабильнее ловит короткие фразы.
 """
 
 from __future__ import annotations
@@ -19,6 +20,8 @@ from voiceflow.core.wake.matcher import normalize_phrase
 logger = logging.getLogger(__name__)
 
 MODEL_DIRNAME = "vosk-model-small-ru"
+#: Кусок для потоковой подачи в Vosk, сэмплы при 16 кГц (~100 мс).
+STREAM_CHUNK = 1600
 
 
 class VoskGrammarDetector(WakeWordDetector):
@@ -96,20 +99,30 @@ class VoskGrammarDetector(WakeWordDetector):
             return None
         data = np.asarray(audio, dtype=np.float32).reshape(-1)
         if sample_rate != 16_000:
-            # Упрощённый ресемплинг: детектор всегда кормится 16 кГц.
             ratio = sample_rate / 16_000
             indices = (np.arange(0, len(data), ratio)).astype(np.int64)
             data = data[indices[indices < len(data)]]
-        pcm = np.clip(data * 32767.0, -32768, 32767).astype(np.int16).tobytes()
+        pcm = np.clip(data * 32767.0, -32768, 32767).astype(np.int16)
+
         recognizer = self._recognizer
-        if recognizer.AcceptWaveform(pcm):
-            payload = json.loads(recognizer.Result())
-        else:
+        text = ""
+        # Короткие куски надёжнее одного большого буфера: AcceptWaveform
+        # на длинном сегменте часто молчит до FinalResult и теряет фразу.
+        for start in range(0, pcm.size, STREAM_CHUNK):
+            chunk = pcm[start : start + STREAM_CHUNK].tobytes()
+            if recognizer.AcceptWaveform(chunk):
+                payload = json.loads(recognizer.Result())
+                candidate = normalize_phrase(str(payload.get("text", "")))
+                if candidate and candidate != "unk":
+                    text = candidate
+                    break
+
+        if not text:
             payload = json.loads(recognizer.FinalResult())
-            # После FinalResult распознаватель нужно пересоздать для следующего сегмента.
+            text = normalize_phrase(str(payload.get("text", "")))
+            # После FinalResult распознаватель нужно пересоздать.
             self.set_phrases(self._phrases)
 
-        text = normalize_phrase(str(payload.get("text", "")))
         if not text or text == "unk":
             return None
         return WakeHit(text=text, score=1.0, engine=self.engine)

@@ -1,14 +1,15 @@
 """Реестр шагов обработки текста.
 
-Выбора режима у пользователя нет: обработка — это одна цепочка, в которой
-каждый шаг включается своей галочкой. Порядок фиксирован и осмыслен:
-сначала текст приводится в порядок, потом при желании переводится, потом
-при желании превращается в инструкцию.
+Обработка — одна цепочка: каждый шаг включается галочкой, порядок задаётся
+настройкой. Все галочки выключены — пользователь получает дословный текст.
 
-Все галочки выключены — пользователь получает дословный текст.
+Типичные цепочки:
 
-Добавление шага — это запись здесь и файл инструкции в ``config/prompts``.
-Конвейер при этом не меняется.
+* очистка → инструкция — русская диктовка превращается в английский промпт;
+* очистка → перевод — чистый английский текст;
+* очистка → перевод → инструкция — сначала английский, потом структура промпта.
+
+Добавление шага — запись здесь и файл инструкции в ``config/prompts``.
 """
 
 from __future__ import annotations
@@ -62,26 +63,23 @@ PROMPT = ProcessingStep(
     id="prompt",
     title="Инструкция для AI",
     description=(
-        "Превращает поток мыслей в краткую структурированную инструкцию "
-        "для другой модели. Нельзя включать вместе с переводом: получится "
-        "каша из двух задач."
+        "Превращает поток мыслей в краткую английскую инструкцию "
+        "для другой модели. Можно сочетать с очисткой и переводом."
     ),
     prompt_id="prompt_engineer",
     enabled_by="prompt_mode_enabled",
     progress_label="Формулирую",
+    target_language="en",
 )
 
-#: Порядок применения. Менять его нельзя не подумав: перевод после
-#: формулирования дал бы английскую инструкцию, собранную по русским правилам.
+#: Заводской порядок. Пользователь может его менять в настройках.
+DEFAULT_STEP_ORDER: tuple[str, ...] = ("clean", "translate", "prompt")
+
 STEPS: tuple[ProcessingStep, ...] = (CLEAN, TRANSLATE, PROMPT)
 
 STEPS_BY_ID: dict[str, ProcessingStep] = {step.id: step for step in STEPS}
 
 STEPS_BY_PROMPT: dict[str, ProcessingStep] = {step.prompt_id: step for step in STEPS}
-
-#: Перевод и «Инструкция» решают разные задачи. Вместе в истории пользователя
-#: давали ответ, где модель повторяла свой шаблон вместо текста.
-EXCLUSIVE_STEP_IDS: frozenset[str] = frozenset({"translate", "prompt"})
 
 #: Что показывать на плашке, когда включённых шагов нет.
 RAW_LABEL = "Готовлю"
@@ -96,35 +94,53 @@ def step_for_prompt(prompt_id: str) -> ProcessingStep | None:
     return STEPS_BY_PROMPT.get(prompt_id)
 
 
+def normalize_step_order(order: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+    """Оставляет известные шаги без повторов и дописывает пропущенные."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for step_id in order:
+        if step_id in STEPS_BY_ID and step_id not in seen:
+            seen.add(step_id)
+            result.append(step_id)
+    for step_id in DEFAULT_STEP_ORDER:
+        if step_id not in seen:
+            result.append(step_id)
+    return tuple(result)
+
+
 def apply_step_enabled(
     settings: ProcessingSettings, step_id: str, enabled: bool
 ) -> list[str]:
-    """Включает или выключает шаг с учётом взаимных исключений.
-
-    Возвращает список человекочитаемых побочных изменений (что выключили).
-    """
+    """Включает или выключает шаг. Побочных выключений больше нет."""
     step = get_step(step_id)
     if step is None:
         return []
-
-    notes: list[str] = []
     setattr(settings, step.enabled_by, enabled)
-    if enabled and step_id in EXCLUSIVE_STEP_IDS:
-        for other_id in EXCLUSIVE_STEP_IDS:
-            if other_id == step_id:
-                continue
-            other = get_step(other_id)
-            if other is None:
-                continue
-            if getattr(settings, other.enabled_by, False):
-                setattr(settings, other.enabled_by, False)
-                notes.append(f"выключен шаг «{other.title}»")
-    return notes
+    return []
+
+
+def move_step(settings: ProcessingSettings, step_id: str, delta: int) -> bool:
+    """Сдвигает шаг в порядке на ``delta`` позиций. ``True`` — порядок изменился."""
+    order = list(normalize_step_order(settings.step_order))
+    if step_id not in order:
+        return False
+    index = order.index(step_id)
+    target = index + delta
+    if target < 0 or target >= len(order):
+        return False
+    order[index], order[target] = order[target], order[index]
+    settings.step_order = tuple(order)
+    return True
 
 
 def enabled_steps(settings: ProcessingSettings) -> list[ProcessingStep]:
-    """Включённые шаги в порядке применения."""
-    return [step for step in STEPS if getattr(settings, step.enabled_by, False)]
+    """Включённые шаги в порядке из настроек."""
+    order = normalize_step_order(settings.step_order)
+    return [
+        STEPS_BY_ID[step_id]
+        for step_id in order
+        if getattr(settings, STEPS_BY_ID[step_id].enabled_by, False)
+    ]
 
 
 def is_enabled(step: ProcessingStep, settings: ProcessingSettings) -> bool:

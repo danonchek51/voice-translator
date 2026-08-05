@@ -376,7 +376,26 @@ class OverlayWindow(QWidget):
         radius = theme.scaled(theme.BASE_RADIUS, self._scale)
         area = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
 
-        painter.setBrush(QBrush(QColor(theme.BACKGROUND)))
+        # Во время работы чуть подкрашиваем фон цветом состояния: по плашке
+        # сразу видно, идёт ли распознавание или обработка, а не только точка.
+        style = theme.style_for(self._state)
+        accent = QColor(self._flash_color or style.color)
+        base = QColor(theme.BACKGROUND)
+        if self._flash_color or self._state in (
+            AppState.RECORDING,
+            AppState.TRANSCRIBING,
+            AppState.PROCESSING,
+            AppState.PASTING,
+            AppState.ERROR,
+        ):
+            mix = 0.22 if self._flash_color else 0.14
+            base = QColor(
+                int(base.red() * (1 - mix) + accent.red() * mix),
+                int(base.green() * (1 - mix) + accent.green() * mix),
+                int(base.blue() * (1 - mix) + accent.blue() * mix),
+            )
+
+        painter.setBrush(QBrush(base))
         painter.setPen(QPen(QColor(theme.BORDER), 1))
         painter.drawRoundedRect(area, radius, radius)
 
@@ -384,8 +403,7 @@ class OverlayWindow(QWidget):
         dot_x = theme.scaled(9, self._scale)
         dot_y = (self.height() - dot_size) / 2.0
         painter.setPen(Qt.PenStyle.NoPen)
-        color = self._flash_color or theme.style_for(self._state).color
-        painter.setBrush(QBrush(QColor(color)))
+        painter.setBrush(QBrush(accent))
         painter.drawEllipse(QRectF(dot_x, dot_y, dot_size, dot_size))
 
         painter.end()

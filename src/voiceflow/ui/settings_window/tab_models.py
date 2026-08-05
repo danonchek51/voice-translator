@@ -116,7 +116,11 @@ class ModelsTab(SettingsTab):
             parts.append("Всё, что можно загрузить автоматически, уже на диске.")
         if plan.unavailable:
             names = ", ".join(spec.title for spec in plan.unavailable)
-            parts.append(f"Не установлен нужный пакет: {names}.")
+            parts.append(
+                f"Не хватает пакета для: {names}. "
+                "В полной сборке с GitHub нужный пакет уже внутри — "
+                "скачайте свежий релиз или поставьте пакет через мастер."
+            )
         if plan.manual:
             names = ", ".join(spec.title for spec in plan.manual)
             parts.append(f"Ставится вручную: {names}.")

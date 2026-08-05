@@ -12,10 +12,10 @@ $DistDir = Join-Path $Root "dist\$Name"
 $Archive = Join-Path $Root "dist\$Name-portable.zip"
 
 Write-Host "Готовлю окружение сборки..." -ForegroundColor Cyan
-# Движок распознавания и детектор голосовой команды входят в сборку: без них
-# приложение запустится, но не будет ни распознавать речь, ни слышать фразу
-# запуска. Модели по-прежнему загружаются отдельно.
-uv sync --group dev --extra asr --extra wake-vosk
+# Движок распознавания, детектор голосовой команды и Whisper входят в сборку:
+# без них приложение запустится, но не будет ни распознавать речь, ни слышать
+# фразу запуска, ни ставить многоязычную модель одной кнопкой.
+uv sync --group dev --extra asr --extra wake-vosk --extra whisper
 uv pip install pyinstaller
 
 # В portable-режиме настройки, история и модели лежат в userdata рядом с
@@ -46,6 +46,7 @@ uv run pyinstaller `
     --collect-submodules voiceflow `
     --collect-all onnx_asr `
     --collect-all vosk `
+    --collect-all faster_whisper `
     --exclude-module tkinter `
     --exclude-module pytest `
     src\voiceflow\__main__.py

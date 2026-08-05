@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 LENGTH_BOUNDS: dict[str, tuple[float, float]] = {
     "clean": (0.4, 1.3),
     "translate": (0.3, 1.8),
-    "prompt": (0.25, 2.5),
+    # Русская диктовка → английская инструкция законно сильно разрастается.
+    "prompt": (0.2, 4.0),
 }
 DEFAULT_BOUNDS = (0.3, 2.0)
 
