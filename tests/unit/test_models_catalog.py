@@ -122,11 +122,31 @@ def test_nothing_installed_on_empty_machine(manager: ModelManager) -> None:
     assert plan.total_bytes > 0
 
 
-def test_manual_entries_are_separated(manager: ModelManager) -> None:
+def test_standard_preset_needs_no_manual_steps(manager: ModelManager) -> None:
+    """Всё, без чего пресет не работает, должно ставиться само."""
     plan = manager.download_plan("standard")
 
-    assert "llama-server" in {spec.id for spec in plan.manual}
-    assert "llama-server" not in {spec.id for spec in plan.missing}
+    assert plan.manual == (), f"осталась ручная установка: {[s.title for s in plan.manual]}"
+    assert "llama-server" in {spec.id for spec in plan.missing}
+
+
+def test_manual_entries_are_separated(manager: ModelManager) -> None:
+    """Записи без ссылки не попадают в очередь загрузки."""
+    from voiceflow.core.models.catalog import ModelCatalog, ModelSpec
+
+    spec = ModelSpec(
+        id="ставится-руками",
+        title="Ручная установка",
+        purpose="runtime",
+        presets=("standard",),
+        size_bytes=0,
+        kind="manual",
+        relative_path="runtime/что-то",
+    )
+    plan = ModelManager(ModelCatalog(models=(spec,))).download_plan("standard")
+
+    assert [s.id for s in plan.manual] == ["ставится-руками"]
+    assert plan.missing == ()
 
 
 def test_models_without_backend_are_skipped(
@@ -209,9 +229,23 @@ def test_unknown_model_is_reported(manager: ModelManager) -> None:
         manager.download("нет-такой")
 
 
-def test_manual_model_explains_itself(manager: ModelManager) -> None:
+def test_manual_model_explains_itself() -> None:
+    from voiceflow.core.models.catalog import ModelCatalog, ModelSpec
+
+    spec = ModelSpec(
+        id="ставится-руками",
+        title="Ручная установка",
+        purpose="runtime",
+        presets=("standard",),
+        size_bytes=0,
+        kind="manual",
+        relative_path="runtime/что-то",
+        notes="скачайте сами",
+    )
+    manual = ModelManager(ModelCatalog(models=(spec,)))
+
     with pytest.raises(ModelDownloadError, match="вручную"):
-        manager.download("llama-server")
+        manual.download("ставится-руками")
 
 
 def test_missing_repository_gives_human_reason(manager: ModelManager) -> None:
@@ -271,11 +305,25 @@ def test_import_from_folder_takes_matching_names(manager: ModelManager) -> None:
     assert manager.status("silero-vad").installed is True
 
 
-def test_import_from_folder_skips_cache_kinds(manager: ModelManager) -> None:
-    """Содержимое кэша Hugging Face так не переносится — обещать это нельзя."""
+def test_asr_model_can_be_brought_on_a_flash_drive(manager: ModelManager) -> None:
+    """Ради машины без интернета модели и лежат обычной папкой."""
     source = Path(str(manager.catalog.by_id("silero-vad").local_path().parent.parent)) / "offline2"
+    prepared = source / "gigaam-v3-e2e-ctc"
+    prepared.mkdir(parents=True)
+    spec = manager.catalog.by_id("gigaam-v3-e2e-ctc")
+    assert spec is not None
+    for name in spec.patterns:
+        (prepared / name).write_bytes(b"x")
+
+    assert manager.import_from_folder("light", source) == ["gigaam-v3-e2e-ctc"]
+    assert manager.is_installed(spec) is True
+
+
+def test_import_skips_cache_kinds(manager: ModelManager) -> None:
+    """Содержимое кэша Hugging Face так не переносится — обещать это нельзя."""
+    source = Path(str(manager.catalog.by_id("silero-vad").local_path().parent.parent)) / "offline3"
     source.mkdir(parents=True, exist_ok=True)
-    (source / "gigaam-v3-e2e-ctc").mkdir()
+    (source / "models--Systran--faster-whisper-small").mkdir()
 
     assert manager.import_from_folder("light", source) == []
 

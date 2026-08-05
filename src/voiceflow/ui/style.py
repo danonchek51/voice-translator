@@ -38,6 +38,60 @@ class Palette:
 
 PALETTE = Palette()
 
+#: Светлая тема. Те же роли цветов, поэтому лист стилей общий.
+LIGHT = Palette(
+    base="#f4f5f7",
+    surface="#ffffff",
+    elevated="#eceef2",
+    line="#d8dbe2",
+    text="#1b1d21",
+    text_dim="#5c626d",
+    text_faint="#8b919c",
+    accent="#2f6fed",
+    accent_hover="#1f5ede",
+    accent_dim="#a9c4f7",
+    danger="#d32f2f",
+    success="#1e8e3e",
+    warning="#b58100",
+)
+
+THEMES: dict[str, Palette] = {"dark": PALETTE, "light": LIGHT}
+
+#: Готовые акценты: человеку проще выбрать из приятных, чем крутить палитру.
+ACCENT_PRESETS: dict[str, str] = {
+    "Синий": "#4c8dff",
+    "Бирюзовый": "#22b8a6",
+    "Зелёный": "#3fb950",
+    "Фиолетовый": "#a855f7",
+    "Розовый": "#ec4899",
+    "Оранжевый": "#f97316",
+    "Графитовый": "#8b95a7",
+}
+
+
+def palette_for(theme: str, accent: str = "") -> Palette:
+    """Палитра темы с заменённым акцентом.
+
+    Акцент задаётся отдельно от темы: человек может любить светлые окна и
+    при этом хотеть свой цвет кнопок.
+    """
+    from dataclasses import replace
+
+    base = THEMES.get(theme, PALETTE)
+    if not accent:
+        return base
+    return replace(base, accent=accent, accent_hover=_lighten(accent, 0.12))
+
+
+def _lighten(colour: str, amount: float) -> str:
+    """Осветляет цвет для состояния наведения."""
+    try:
+        red, green, blue = (int(colour[i : i + 2], 16) for i in (1, 3, 5))
+    except (ValueError, IndexError):
+        return colour
+    mix = lambda value: min(255, int(value + (255 - value) * amount))  # noqa: E731
+    return f"#{mix(red):02x}{mix(green):02x}{mix(blue):02x}"
+
 #: Скругления и отступы в пикселях.
 RADIUS = 10
 RADIUS_SMALL = 6
@@ -461,11 +515,14 @@ QMessageBox, QFileDialog {{
 """
 
 
-def apply_to(app: object) -> None:
-    """Включает тёмную тему для всего приложения.
+def apply_to(app: object, palette: Palette | None = None) -> None:
+    """Включает тему для всего приложения.
 
     Помимо листа стилей задаётся палитра Qt: без неё системные диалоги
     остаются светлыми и режут глаз на тёмном фоне.
+
+    Вызывается и при смене темы на ходу: Qt пересчитывает оформление всех
+    открытых окон сам, перезапуск не нужен.
     """
     from PySide6.QtGui import QColor, QPalette
     from PySide6.QtWidgets import QApplication
@@ -473,7 +530,7 @@ def apply_to(app: object) -> None:
     if not isinstance(app, QApplication):
         return
 
-    p = PALETTE
+    p = palette or PALETTE
     qt_palette = QPalette()
     qt_palette.setColor(QPalette.ColorRole.Window, QColor(p.base))
     qt_palette.setColor(QPalette.ColorRole.WindowText, QColor(p.text))
@@ -496,4 +553,4 @@ def apply_to(app: object) -> None:
 
     app.setStyle("Fusion")
     app.setPalette(qt_palette)
-    app.setStyleSheet(stylesheet())
+    app.setStyleSheet(stylesheet(p))

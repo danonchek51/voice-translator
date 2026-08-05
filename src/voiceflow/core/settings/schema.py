@@ -32,6 +32,8 @@ LLM_BACKENDS = ("builtin", "external")
 PASTE_METHODS = ("ctrl_v", "shift_insert", "unicode")
 LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
 HISTORY_LIMITS = (0, 10, 20, 50, 100)
+THEMES = ("dark", "light")
+INDICATORS = ("wave", "bars", "pulse")
 
 
 @dataclass(slots=True)
@@ -96,7 +98,10 @@ class LlmSettings:
     model_path: str = ""
     n_gpu_layers: int = 999
     context_size: int = 4096
-    timeout_s: float = 8.0
+    #: На видеокарте ответ приходит за секунду-две, на процессоре — заметно
+    #: дольше. Восьми секунд там не хватало, и обработка молча откатывалась
+    #: к очистке правилами.
+    timeout_s: float = 20.0
     keep_loaded: bool = True
 
 
@@ -119,6 +124,21 @@ class OverlaySettings:
     scale: int = 100
     opacity: int = 90
     always_on_top: bool = True
+
+
+@dataclass(slots=True)
+class AppearanceSettings:
+    """Оформление. Пустая строка означает «взять цвет из темы»."""
+
+    theme: str = "dark"
+    #: Цвет кнопок, выделений и волны.
+    accent: str = ""
+    #: Фон плашки: она висит поверх чужих окон, и ей идёт свой оттенок.
+    overlay_color: str = ""
+    #: Цвет волны, если он должен отличаться от акцента.
+    wave_color: str = ""
+    #: Как показывается уровень микрофона.
+    indicator: str = "wave"
 
 
 @dataclass(slots=True)
@@ -147,6 +167,7 @@ class Settings:
     llm: LlmSettings = field(default_factory=LlmSettings)
     output: OutputSettings = field(default_factory=OutputSettings)
     overlay: OverlaySettings = field(default_factory=OverlaySettings)
+    appearance: AppearanceSettings = field(default_factory=AppearanceSettings)
     history: HistorySettings = field(default_factory=HistorySettings)
     system: SystemSettings = field(default_factory=SystemSettings)
 
@@ -259,6 +280,23 @@ def validate(settings: Settings) -> list[str]:
             )
             setattr(section, name, fallback)
 
+    def colour_field(section: Any, name: str, section_name: str) -> None:
+        """Цвет вида ``#rrggbb``. Пустая строка означает «взять из темы»."""
+        value = str(getattr(section, name) or "")
+        if not value:
+            return
+        ok = value.startswith("#") and len(value) == 7
+        if ok:
+            try:
+                int(value[1:], 16)
+            except ValueError:
+                ok = False
+        if not ok:
+            notes.append(
+                f"{section_name}.{name}: {value!r} не похоже на цвет, беру из темы"
+            )
+            setattr(section, name, "")
+
     def clamp(section: Any, name: str, low: float, high: float, section_name: str) -> None:
         value = getattr(section, name)
         if value < low or value > high:
@@ -276,6 +314,11 @@ def validate(settings: Settings) -> list[str]:
     clamp(settings.activation, "cooldown_ms", 0, 10_000, "activation")
     clamp(settings.activation, "max_record_seconds", 10, 3600, "activation")
     clamp(settings.activation, "silence_stop_seconds", 1.0, 30.0, "activation")
+
+    enum_field(settings.appearance, "theme", THEMES, "appearance")
+    enum_field(settings.appearance, "indicator", INDICATORS, "appearance")
+    for name in ("accent", "overlay_color", "wave_color"):
+        colour_field(settings.appearance, name, "appearance")
 
     enum_field(settings.recognition, "preset", PRESETS, "recognition")
     enum_field(settings.recognition, "engine", ASR_ENGINES, "recognition")

@@ -16,12 +16,14 @@ from PySide6.QtWidgets import (
 
 from voiceflow.core.settings.schema import LOG_LEVELS, Settings
 from voiceflow.platform.base import Autostart, get_autostart
+from voiceflow.ui.hints import GENERAL
 from voiceflow.ui.settings_window.common import SettingsTab
 
 UI_LANGUAGES = {"ru": "Русский", "en": "English"}
 
 
 class GeneralTab(SettingsTab):
+    hints = GENERAL
     sections = ("system",)
 
     reset_all_requested = Signal()
@@ -74,8 +76,8 @@ class GeneralTab(SettingsTab):
             )
         )
         transfer_buttons = QHBoxLayout()
-        export_button = QPushButton("Экспортировать настройки…")
-        import_button = QPushButton("Импортировать настройки…")
+        export_button = self.export = QPushButton("Экспортировать настройки…")
+        import_button = self.import_ = QPushButton("Импортировать настройки…")
         export_button.clicked.connect(self.export_requested.emit)
         import_button.clicked.connect(self.import_requested.emit)
         transfer_buttons.addWidget(export_button)
@@ -88,7 +90,7 @@ class GeneralTab(SettingsTab):
 
         danger = QHBoxLayout()
         danger.addStretch(1)
-        reset_all = QPushButton("Сбросить все настройки…")
+        reset_all = self.reset_all = QPushButton("Сбросить все настройки…")
         reset_all.clicked.connect(self.reset_all_requested.emit)
         danger.addWidget(reset_all)
         layout.addLayout(danger)

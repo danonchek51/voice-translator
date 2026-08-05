@@ -329,3 +329,75 @@ def get_autostart() -> Autostart:
         except Exception:
             logger.exception("Автозапуск недоступен")
     return NullAutostart()
+
+
+@dataclass(frozen=True, slots=True)
+class HardwareInfo:
+    """Что удалось узнать о машине. Нули означают «выяснить не удалось»."""
+
+    cores: int = 0
+    memory_bytes: int = 0
+    gpu_name: str = ""
+    gpu_memory_bytes: int = 0
+
+    @property
+    def memory_gb(self) -> float:
+        return self.memory_bytes / 1024**3
+
+    @property
+    def gpu_memory_gb(self) -> float:
+        return self.gpu_memory_bytes / 1024**3
+
+    @property
+    def has_gpu(self) -> bool:
+        return bool(self.gpu_name)
+
+
+def probe_hardware() -> HardwareInfo:
+    """Собирает сведения о машине для подбора конфигурации."""
+    import os
+    import sys
+
+    cores = os.cpu_count() or 0
+    if sys.platform != "win32":
+        return HardwareInfo(cores=cores)
+
+    try:
+        from voiceflow.platform.windows.hardware import total_memory_bytes, video_adapter
+
+        gpu_name, gpu_memory = video_adapter()
+        return HardwareInfo(
+            cores=cores,
+            memory_bytes=total_memory_bytes(),
+            gpu_name=gpu_name,
+            gpu_memory_bytes=gpu_memory,
+        )
+    except Exception:
+        logger.exception("Не удалось определить характеристики машины")
+        return HardwareInfo(cores=cores)
+
+
+def lower_current_thread_priority() -> bool:
+    """Понижает приоритет текущего потока.
+
+    Распознавание идёт, пока человек продолжает работать в другом окне. Даже
+    ограниченное числом ядер, оно соперничает за процессор с отрисовкой
+    рабочего стола, и указатель начинает дёргаться. Фоновой работе уступать
+    правильно: задержка в доли секунды незаметна, рывки заметны сразу.
+
+    Возвращает ``False``, если система такого не умеет — это не ошибка.
+    """
+    import sys
+
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+
+        # -1 — псевдодескриптор текущего потока, -1 в приоритете означает
+        # BELOW_NORMAL: поток уступает интерфейсу, но не голодает.
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        return bool(kernel32.SetThreadPriority(kernel32.GetCurrentThread(), -1))
+    except Exception:
+        logger.debug("Не удалось понизить приоритет потока", exc_info=True)
+        return False

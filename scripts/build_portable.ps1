@@ -12,9 +12,10 @@ $DistDir = Join-Path $Root "dist\$Name"
 $Archive = Join-Path $Root "dist\$Name-portable.zip"
 
 Write-Host "Готовлю окружение сборки..." -ForegroundColor Cyan
-# Движок распознавания входит в сборку: без него приложение запустится,
-# но распознавать речь не сможет. Модели по-прежнему загружаются отдельно.
-uv sync --group dev --extra asr
+# Движок распознавания и детектор голосовой команды входят в сборку: без них
+# приложение запустится, но не будет ни распознавать речь, ни слышать фразу
+# запуска. Модели по-прежнему загружаются отдельно.
+uv sync --group dev --extra asr --extra wake-vosk
 uv pip install pyinstaller
 
 # В portable-режиме настройки, история и модели лежат в userdata рядом с
@@ -44,6 +45,7 @@ uv run pyinstaller `
     --add-data "config;config" `
     --collect-submodules voiceflow `
     --collect-all onnx_asr `
+    --collect-all vosk `
     --exclude-module tkinter `
     --exclude-module pytest `
     src\voiceflow\__main__.py
@@ -65,7 +67,8 @@ Copy-Item (Join-Path $Root "LICENSE") $DistDir -Force
 
 Write-Host "Упаковываю архив..." -ForegroundColor Cyan
 # Архив собирается до возврата userdata: модели и личные данные в него не идут.
-Compress-Archive -Path (Join-Path $DistDir "*") -DestinationPath $Archive
+# Force обязателен: без него повторная сборка падает на существующем файле.
+Compress-Archive -Path (Join-Path $DistDir "*") -DestinationPath $Archive -Force
 
 if ($stashed) {
     Write-Host "Возвращаю userdata..." -ForegroundColor Cyan

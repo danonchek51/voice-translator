@@ -19,7 +19,12 @@ from typing import Any
 import numpy as np
 
 from voiceflow import paths
-from voiceflow.core.asr.base import EngineInfo, ModelNotReadyError, Transcriber
+from voiceflow.core.asr.base import (
+    EngineInfo,
+    ModelNotReadyError,
+    Transcriber,
+    inference_threads,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +116,8 @@ class FasterWhisperTranscriber(Transcriber):
                 compute_type=COMPUTE_TYPE_BY_DEVICE.get(self.device, "int8"),
                 download_root=download_root,
                 local_files_only=True,
+                # Все ядра под завязку дают рывки курсора во время работы.
+                cpu_threads=inference_threads(),
             )
         except Exception as exc:
             if self.device == "cuda":
@@ -135,6 +142,7 @@ class FasterWhisperTranscriber(Transcriber):
                 compute_type=COMPUTE_TYPE_BY_DEVICE["cpu"],
                 download_root=download_root,
                 local_files_only=True,
+                cpu_threads=inference_threads(),
             )
         except Exception as exc:
             raise ModelNotReadyError(

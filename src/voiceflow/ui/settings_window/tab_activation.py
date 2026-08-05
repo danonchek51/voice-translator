@@ -18,9 +18,11 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from voiceflow.core.settings.schema import MOUSE_BUTTONS, Settings
+from voiceflow.core.settings.schema import Settings
 from voiceflow.core.wake.matcher import phrase_risk
+from voiceflow.ui.hints import ACTIVATION
 from voiceflow.ui.settings_window.common import SettingsTab
+from voiceflow.ui.widgets.shortcut_edit import MOUSE_TITLES, HotkeyEdit, MouseButtonEdit
 
 #: Человеческие названия способов остановки записи.
 STOP_MODE_TITLES = {
@@ -30,12 +32,9 @@ STOP_MODE_TITLES = {
     "same_phrase": "Повторение той же голосовой команды",
 }
 
-MOUSE_BUTTON_TITLES = {
-    "none": "Не использовать",
-    "x1": "Боковая кнопка 1",
-    "x2": "Боковая кнопка 2",
-    "middle": "Средняя кнопка (колесо)",
-}
+#: Названия кнопок мыши живут рядом с виджетом захвата: там же они и
+#: показываются, дублировать их здесь незачем.
+MOUSE_BUTTON_TITLES = MOUSE_TITLES
 
 RISK_TITLES = {
     "пусто": "введите фразу",
@@ -47,6 +46,7 @@ RISK_TITLES = {
 
 class ActivationTab(SettingsTab):
     sections = ("activation",)
+    hints = ACTIVATION
 
     listening_toggle_requested = Signal()
 
@@ -95,17 +95,21 @@ class ActivationTab(SettingsTab):
         # --- Клавиатура и мышь ---------------------------------------- #
         manual = QGroupBox("Клавиатура и мышь")
         manual_form = QFormLayout(manual)
-        self.hotkey = QLineEdit()
-        self.hotkey.setToolTip("Формат pynput, например <ctrl>+<alt>+d")
-        self.mouse_button = QComboBox()
-        for code, title in MOUSE_BUTTON_TITLES.items():
-            self.mouse_button.addItem(title, code)
+        self.hotkey = HotkeyEdit()
+        self.mouse_button = MouseButtonEdit()
         self.stop_mode = QComboBox()
         for code, title in STOP_MODE_TITLES.items():
             self.stop_mode.addItem(title, code)
         manual_form.addRow("Горячая клавиша", self.hotkey)
         manual_form.addRow("Кнопка мыши", self.mouse_button)
         manual_form.addRow("Способ остановки", self.stop_mode)
+        bind_hint = QLabel(
+            "Щёлкните поле и нажмите нужную клавишу или кнопку мыши. "
+            "Delete снимает назначение, Escape отменяет."
+        )
+        bind_hint.setWordWrap(True)
+        bind_hint.setProperty("role", "hint")
+        manual_form.addRow("", bind_hint)
         layout.addWidget(manual)
 
         # --- Границы записи -------------------------------------------- #
@@ -159,8 +163,8 @@ class ActivationTab(SettingsTab):
         self.sensitivity.setValue(activation.sensitivity)
         self.sensitivity_value.setText(str(activation.sensitivity))
         self.cooldown_ms.setValue(activation.cooldown_ms)
-        self.hotkey.setText(activation.hotkey)
-        self._select(self.mouse_button, activation.mouse_button, MOUSE_BUTTONS[0])
+        self.hotkey.set_value(activation.hotkey)
+        self.mouse_button.set_value(activation.mouse_button)
         self._select(self.stop_mode, activation.stop_mode, "press_again")
         self.max_record_seconds.setValue(activation.max_record_seconds)
         self.silence_stop_enabled.setChecked(activation.silence_stop_enabled)
@@ -174,8 +178,8 @@ class ActivationTab(SettingsTab):
         activation.stop_phrase = self.stop_phrase.text().strip()
         activation.sensitivity = self.sensitivity.value()
         activation.cooldown_ms = self.cooldown_ms.value()
-        activation.hotkey = self.hotkey.text().strip()
-        activation.mouse_button = str(self.mouse_button.currentData())
+        activation.hotkey = self.hotkey.value()
+        activation.mouse_button = self.mouse_button.value()
         activation.stop_mode = str(self.stop_mode.currentData())
         activation.max_record_seconds = self.max_record_seconds.value()
         activation.silence_stop_enabled = self.silence_stop_enabled.isChecked()

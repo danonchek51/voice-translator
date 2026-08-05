@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from voiceflow.core.settings.schema import Settings
 from voiceflow.core.text.modes import STEPS, describe
+from voiceflow.ui.hints import PROCESSING
 from voiceflow.ui.settings_window.common import SettingsTab
 
 PASTE_METHOD_TITLES = {
@@ -30,6 +31,7 @@ PASTE_METHOD_TITLES = {
 
 class ProcessingTab(SettingsTab):
     sections = ("processing", "output")
+    hints = PROCESSING
 
     def __init__(self) -> None:
         super().__init__()
@@ -115,6 +117,18 @@ class ProcessingTab(SettingsTab):
         self.chain.setText(
             "Итог: " + (" → ".join(chosen) if chosen else "дословный текст без обработки")
         )
+
+    def hint_targets(self) -> dict[str, QCheckBox]:
+        """Шаги обработки живут в словаре, а не в отдельных полях.
+
+        Ключом берётся имя настройки, а не идентификатор шага: у режима
+        «Инструкция» они различаются, и подсказка прошла бы мимо.
+        """
+        return {
+            step.enabled_by: self.step_boxes[step.id]
+            for step in STEPS
+            if step.id in self.step_boxes
+        }
 
     def load_from(self, settings: Settings) -> None:
         processing = settings.processing

@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 from pathlib import Path
 
@@ -40,6 +41,7 @@ from voiceflow.platform.base import Autostart
 from voiceflow.ui import style
 from voiceflow.ui.settings_window.common import SettingsTab
 from voiceflow.ui.settings_window.tab_activation import ActivationTab
+from voiceflow.ui.settings_window.tab_appearance import AppearanceTab
 from voiceflow.ui.settings_window.tab_diagnostics import DiagnosticsTab
 from voiceflow.ui.settings_window.tab_general import GeneralTab
 from voiceflow.ui.settings_window.tab_history import HistoryTab
@@ -78,6 +80,10 @@ class SettingsWindow(QDialog):
     """Обычное окно: его закрытие не завершает приложение."""
 
     settings_saved = Signal()
+    #: Оформление на предпросмотре: настройки ещё не сохранены.
+    appearance_previewed = Signal(object)
+    #: Окно закрыто: непринятый предпросмотр нужно откатить.
+    closed = Signal()
     wizard_requested = Signal()
     listening_toggle_requested = Signal()
     copy_requested = Signal(str)
@@ -110,6 +116,8 @@ class SettingsWindow(QDialog):
         self.processing = ProcessingTab()
         self.prompts = PromptsTab(processor_provider=processor_provider)
         self.models = ModelsTab(models)
+        self.appearance = AppearanceTab()
+        self.appearance.preview_requested.connect(self._preview_appearance)
         self.history = HistoryTab(history)
         self.diagnostics = DiagnosticsTab(
             context_provider=context_provider,
@@ -128,6 +136,7 @@ class SettingsWindow(QDialog):
             (self.processing, "Обработка"),
             (self.prompts, "Инструкции"),
             (self.models, "Модели"),
+            (self.appearance, "Оформление"),
             (self.history, "История"),
             (self.diagnostics, "Диагностика"),
         ):
@@ -136,6 +145,10 @@ class SettingsWindow(QDialog):
             self.tabs.addTab(_scrollable(tab), title)
             self._tab_list.append(tab)
             tab.reset_requested.connect(lambda t=tab: self._reset_sections(t))
+            # Подсказки расставляются здесь, а не в каждой вкладке: одно место
+            # проще не забыть при добавлении новой вкладки.
+            for name in tab.apply_hints():
+                logger.warning("Подсказка «%s» не нашла поля на вкладке %s", name, title)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(style.PADDING, style.PADDING, style.PADDING, style.PADDING)
@@ -175,6 +188,21 @@ class SettingsWindow(QDialog):
 
     def _tabs(self) -> list[SettingsTab]:
         return list(self._tab_list)
+
+    def closeEvent(self, event) -> None:  # type: ignore[no-untyped-def]  # noqa: N802
+        # Предпросмотр оформления не сохранён: возвращаем то, что записано.
+        self.closed.emit()
+        super().closeEvent(event)
+
+    def _preview_appearance(self) -> None:
+        """Показывает выбранное оформление сразу, ничего не сохраняя.
+
+        Подобрать цвет вслепую нельзя, его нужно видеть. Настройки при этом
+        остаются прежними: закрытие окна без сохранения вернёт как было.
+        """
+        preview = copy.deepcopy(self._store.settings)
+        self.appearance.apply_to(preview)
+        self.appearance_previewed.emit(preview)
 
     def reload(self) -> None:
         """Показывает актуальные значения во всех вкладках."""

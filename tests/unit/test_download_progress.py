@@ -58,27 +58,39 @@ def test_finished_file_counts_fully(manager: ModelManager) -> None:
     assert manager.downloaded_bytes(spec) == 9000
 
 
-def test_hub_progress_counts_blobs_only(manager: ModelManager) -> None:
+def test_asr_progress_counts_the_folder(manager: ModelManager) -> None:
+    """Модели распознавания лежат обычной папкой, а не в кэше."""
+    spec = manager.catalog.by_id("gigaam-v3-e2e-rnnt")
+    assert spec is not None
+    folder = spec.local_path()
+    folder.mkdir(parents=True)
+    (folder / "v3_e2e_rnnt_encoder.int8.onnx").write_bytes(b"x" * 1000)
+    (folder / "v3_e2e_rnnt_encoder.int8.onnx.partial").write_bytes(b"x" * 500)
+
+    assert manager.downloaded_bytes(spec) == 1500
+
+
+def test_whisper_progress_counts_blobs_only(manager: ModelManager) -> None:
     """В snapshots лежит копия тех же данных: учёт обеих папок дал бы 200 %."""
     from voiceflow.core.models import manager as manager_module
 
-    spec = manager.catalog.by_id("gigaam-v3-e2e-rnnt")
+    spec = manager.catalog.by_id("whisper-large-v3-turbo")
     assert spec is not None
-    folder = manager_module._hub_cache_root() / spec.cache_folder_name
+    folder = manager_module.paths.whisper_models_dir() / spec.cache_folder_name
     (folder / "blobs").mkdir(parents=True)
     (folder / "snapshots" / "rev").mkdir(parents=True)
     (folder / "blobs" / "abc").write_bytes(b"x" * 1000)
-    (folder / "snapshots" / "rev" / "model.onnx").write_bytes(b"x" * 1000)
+    (folder / "snapshots" / "rev" / "model.bin").write_bytes(b"x" * 1000)
 
     assert manager.downloaded_bytes(spec) == 1000
 
 
-def test_hub_progress_counts_incomplete_blobs(manager: ModelManager) -> None:
+def test_progress_counts_incomplete_blobs(manager: ModelManager) -> None:
     from voiceflow.core.models import manager as manager_module
 
-    spec = manager.catalog.by_id("gigaam-v3-e2e-rnnt")
+    spec = manager.catalog.by_id("whisper-large-v3-turbo")
     assert spec is not None
-    blobs = manager_module._hub_cache_root() / spec.cache_folder_name / "blobs"
+    blobs = manager_module.paths.whisper_models_dir() / spec.cache_folder_name / "blobs"
     blobs.mkdir(parents=True)
     (blobs / "abc.incomplete").write_bytes(b"x" * 2048)
 
@@ -107,15 +119,13 @@ def test_zip_progress_counts_archive_and_folder(manager: ModelManager) -> None:
     assert manager.downloaded_bytes(spec) == 700
 
 
-def test_progress_never_exceeds_declared_size(manager: ModelManager) -> None:
+def test_progress_matches_declared_size(manager: ModelManager) -> None:
     """Проценты считаются от размера из реестра, поэтому он должен быть честным."""
-    from voiceflow.core.models import manager as manager_module
-
     spec = manager.catalog.by_id("gigaam-v3-e2e-ctc")
     assert spec is not None
-    blobs = manager_module._hub_cache_root() / spec.cache_folder_name / "blobs"
-    blobs.mkdir(parents=True)
-    (blobs / "weights").write_bytes(b"x" * spec.size_bytes)
+    folder = spec.local_path()
+    folder.mkdir(parents=True)
+    (folder / "v3_e2e_ctc.int8.onnx").write_bytes(b"x" * spec.size_bytes)
 
     assert manager.downloaded_bytes(spec) == spec.size_bytes
 

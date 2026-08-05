@@ -91,6 +91,9 @@ class ModelManager:
 
     def is_installed(self, spec: ModelSpec) -> bool:
         """Есть ли файлы модели там, где их будет искать движок."""
+        if spec.kind == "files":
+            folder = spec.local_path()
+            return all((folder / name).is_file() for name in spec.patterns)
         if spec.kind == "hub":
             return repo_has_files(spec.repo, spec.patterns)
         if spec.kind == "whisper":
@@ -135,6 +138,8 @@ class ModelManager:
             return _payload_size(paths.whisper_models_dir() / spec.cache_folder_name)
 
         target = spec.local_path()
+        if spec.kind == "files":
+            return _path_size(target)
         if spec.kind == "zip":
             archive = target.parent / f"{target.name}.zip.partial"
             return _path_size(target) + _path_size(archive)
@@ -158,6 +163,27 @@ class ModelManager:
             if status is not None:
                 result.append(status)
         return result
+
+    def installed_llm_path(self, preset: str) -> Path | None:
+        """Путь к установленной языковой модели пресета.
+
+        Нужен, чтобы настройки указывали на скачанный файл сами: пустое поле
+        ``llm.model_path`` означает «модель не выбрана», и перевод с режимом
+        «Инструкция» молча перестают работать после успешной загрузки.
+        """
+        for spec in self._catalog.for_preset(preset):
+            if spec.purpose != "llm":
+                continue
+            if self.is_installed(spec):
+                return spec.local_path()
+        return None
+
+    def is_llm_ready(self, preset: str) -> bool:
+        """Есть ли и модель, и сервер, который её поднимет."""
+        if self.installed_llm_path(preset) is None:
+            return False
+        runtime = self._catalog.by_id("llama-server")
+        return runtime is not None and self.is_installed(runtime)
 
     def disk_usage(self) -> int:
         root = paths.models_dir()
@@ -214,7 +240,9 @@ class ModelManager:
 
         with allow_downloads():
             try:
-                if spec.kind == "hub":
+                if spec.kind == "files":
+                    self._download_files(spec, progress)
+                elif spec.kind == "hub":
                     self._download_hub(spec, progress)
                 elif spec.kind == "whisper":
                     self._download_whisper(spec, progress)
@@ -256,6 +284,24 @@ class ModelManager:
         if "getaddrinfo" in lowered or "name or service" in lowered or "connection" in lowered:
             return f"«{spec.title}»: нет соединения с интернетом."
         return f"«{spec.title}»: {text}"
+
+    def _download_files(self, spec: ModelSpec, progress: ProgressCallback | None) -> None:
+        """Несколько файлов репозитория в обычную папку.
+
+        Кэш Hugging Face хранит каждый файл дважды — саму загрузку и копию в
+        снимке, потому что без прав на символические ссылки Windows копирует.
+        Обычная папка занимает вдвое меньше, переносится на машину без
+        интернета простым копированием и не зависит от устройства кэша.
+        """
+        folder = spec.local_path()
+        folder.mkdir(parents=True, exist_ok=True)
+        for name in spec.patterns:
+            target = folder / name
+            if target.is_file():
+                continue
+            partial = target.with_suffix(target.suffix + ".partial")
+            self._fetch(spec, partial, progress, url=file_url(spec, name))
+            partial.replace(target)
 
     def _download_hub(self, spec: ModelSpec, progress: ProgressCallback | None) -> None:
         """Часть репозитория в общий кэш: именно там ищет файлы onnx-asr."""
@@ -477,7 +523,12 @@ def verify_sha256(path: Path, expected: str) -> bool:
 
 def resolve_url(spec: ModelSpec) -> str:
     """Прямая ссылка на файл в репозитории Hugging Face."""
-    return f"https://huggingface.co/{spec.repo}/resolve/main/{spec.patterns[0]}"
+    return file_url(spec, spec.patterns[0])
+
+
+def file_url(spec: ModelSpec, name: str) -> str:
+    """Прямая ссылка на конкретный файл репозитория."""
+    return f"https://huggingface.co/{spec.repo}/resolve/main/{name}"
 
 
 def _path_size(path: Path) -> int:

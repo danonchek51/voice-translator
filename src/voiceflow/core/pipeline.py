@@ -35,7 +35,7 @@ from voiceflow.core.state import AppState, StateMachine
 from voiceflow.core.text.modes import ProcessingStep, enabled_steps
 from voiceflow.core.text.processor import TextProcessor
 from voiceflow.core.triggers import TriggerAction, TriggerCoordinator, TriggerSource
-from voiceflow.platform.base import WindowInfo
+from voiceflow.platform.base import WindowInfo, lower_current_thread_priority
 
 logger = logging.getLogger(__name__)
 
@@ -427,6 +427,9 @@ class Pipeline:
 
     def _run_in_background(self, work: Callable[[], None]) -> None:
         def runner() -> None:
+            # Распознавание нагружает процессор, пока человек продолжает
+            # работать: без уступки указатель на экране начинает дёргаться.
+            lower_current_thread_priority()
             try:
                 work()
             except Exception:

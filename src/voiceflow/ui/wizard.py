@@ -30,12 +30,14 @@ from PySide6.QtWidgets import (
     QWizardPage,
 )
 
+from voiceflow.core.models.advisor import recommend_here
 from voiceflow.core.models.catalog import ModelSpec
 from voiceflow.core.models.manager import DownloadPlan, ModelManager
 from voiceflow.core.models.presets import PresetSpec, apply_preset, list_presets
 from voiceflow.core.settings.store import SettingsStore
 from voiceflow.ui.formatting import human_duration as _human_duration
 from voiceflow.ui.formatting import human_size as _human_size
+from voiceflow.ui.hints import PRESET_TOOLTIPS
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +88,13 @@ class PresetPage(QWizardPage):
             "будет готов текст. Его можно сменить позже в настройках."
         )
 
+        # Выбирать вслепую между «Лёгким» и «Качеством» человек не должен:
+        # приложение смотрит на машину и предлагает подходящее само.
+        self._advice = recommend_here()
+
         layout = QVBoxLayout(self)
+        layout.addWidget(self._build_advice())
+
         self._buttons: dict[str, QRadioButton] = {}
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
@@ -96,6 +104,27 @@ class PresetPage(QWizardPage):
 
         layout.addStretch(1)
 
+    def _build_advice(self) -> QWidget:
+        box = QGroupBox()
+        box.setObjectName("card")
+        box_layout = QVBoxLayout(box)
+
+        heading = QLabel(f"Рекомендую: {self._advice.title}")
+        heading.setProperty("role", "accent")
+        heading.setWordWrap(True)
+        box_layout.addWidget(heading)
+
+        lines = ["Ваш компьютер: " + ", ".join(self._advice.findings), self._advice.reason]
+        lines.extend(self._advice.limits)
+        details = QLabel("\n".join(lines))
+        details.setWordWrap(True)
+        details.setProperty("role", "hint")
+        details.setSizePolicy(
+            details.sizePolicy().horizontalPolicy(), QSizePolicy.Policy.MinimumExpanding
+        )
+        box_layout.addWidget(details)
+        return box
+
     def _build_option(self, spec: PresetSpec) -> QGroupBox:
         box = QGroupBox()
         # Карточка без заголовка: имя отключает отступ, зарезервированный
@@ -103,8 +132,10 @@ class PresetPage(QWizardPage):
         box.setObjectName("card")
         box_layout = QVBoxLayout(box)
 
-        button = QRadioButton(spec.title)
-        button.setChecked(spec.id == "standard")
+        recommended = spec.id == self._advice.preset
+        button = QRadioButton(f"{spec.title} — рекомендуется" if recommended else spec.title)
+        button.setChecked(recommended)
+        button.setToolTip(PRESET_TOOLTIPS.get(spec.id, spec.summary))
         # Переключатели лежат в разных карточках, а Qt связывает их по общему
         # родителю. Без явной группы выбранными оказались бы сразу несколько.
         self._group.addButton(button)
@@ -133,7 +164,7 @@ class PresetPage(QWizardPage):
         for preset_id, button in self._buttons.items():
             if button.isChecked():
                 return preset_id
-        return "standard"
+        return self._advice.preset
 
 
 class DownloadPage(QWizardPage):

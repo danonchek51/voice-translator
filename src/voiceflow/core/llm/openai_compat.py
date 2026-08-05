@@ -116,6 +116,12 @@ class OpenAiCompatibleClient(LlmClient):
             # Нулевая температура: обработка текста должна быть повторяемой.
             "temperature": temperature,
             "stream": False,
+            # Qwen3 и другие модели с рассуждением по умолчанию сначала думают
+            # вслух. На правке одной фразы всё отведённое число токенов уходит
+            # в размышления, а поле ответа остаётся пустым. Нам нужен только
+            # результат. Серверы, которые про этот параметр не знают, его
+            # игнорируют.
+            "chat_template_kwargs": {"enable_thinking": False},
         }
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
@@ -162,8 +168,19 @@ def _extract_text(response: httpx.Response) -> str:
     if not isinstance(choices, list) or not choices:
         raise LlmError("В ответе сервера нет вариантов ответа")
 
-    message = choices[0].get("message") or {}
+    choice = choices[0]
+    message = choice.get("message") or {}
     content = message.get("content")
     if not isinstance(content, str):
         raise LlmError("В ответе сервера нет текста")
+
+    if not content.strip() and message.get("reasoning_content"):
+        # Пустой ответ при непустых размышлениях — не «модель не ответила»,
+        # а известная причина: модель не вышла из рассуждений.
+        raise LlmError(
+            "Модель ушла в размышления и не выдала результат. "
+            "Увеличьте предел длины ответа или выберите модель без рассуждений."
+        )
+    if not content.strip() and choice.get("finish_reason") == "length":
+        raise LlmError("Ответ модели не поместился в отведённую длину")
     return content

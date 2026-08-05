@@ -41,6 +41,13 @@ QUIET = 0.005
 #: в цифрах, а на тихом микрофоне линейная шкала оставляет её почти плоской.
 DISPLAY_CURVE = 0.6
 
+#: Виды индикатора. Разница только в отрисовке: сглаживание общее, поэтому
+#: любой вид одинаково плавный.
+STYLES: tuple[str, ...] = ("wave", "bars", "pulse")
+
+#: Сколько столбиков рисовать в режиме эквалайзера.
+BAR_COUNT = 16
+
 
 class WaveMeter(QWidget):
     """Симметричная волна, бегущая справа налево."""
@@ -51,6 +58,7 @@ class WaveMeter(QWidget):
 
         self._target = 0.0
         self._value = 0.0
+        self._style = "wave"
         self._history: deque[float] = deque([0.0] * POINTS, maxlen=POINTS)
 
         self._timer = QTimer(self)
@@ -101,6 +109,11 @@ class WaveMeter(QWidget):
     # Отрисовка
     # ------------------------------------------------------------------ #
 
+    def set_style(self, style: str) -> None:
+        """Меняет вид индикатора: волна, столбики или пульс."""
+        self._style = style if style in STYLES else "wave"
+        self.update()
+
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802 — имя из Qt
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -110,6 +123,15 @@ class WaveMeter(QWidget):
 
         if not any(amplitude > QUIET for amplitude in self._history):
             self._draw_resting_line(painter, area, center)
+            painter.end()
+            return
+
+        if self._style == "bars":
+            self._draw_bars(painter, area, center)
+            painter.end()
+            return
+        if self._style == "pulse":
+            self._draw_pulse(painter, area, center)
             painter.end()
             return
 
@@ -126,6 +148,42 @@ class WaveMeter(QWidget):
         painter.setBrush(QBrush(QColor(theme.METER_FILL)))
         painter.drawPath(path)
         painter.end()
+
+    def _draw_bars(self, painter: QPainter, area: QRectF, center: float) -> None:
+        """Столбики: привычный вид эквалайзера, читается на самом малом размере."""
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(QColor(theme.METER_FILL)))
+
+        count = min(BAR_COUNT, len(self._history))
+        step = area.width() / count
+        width = max(2.0, step * 0.55)
+        limit = area.height() / 2.0 - 0.5
+        # Берём последние значения: столбики показывают недавнее, а не всю ленту.
+        values = list(self._history)[-count:]
+
+        for index, amplitude in enumerate(values):
+            height = max(1.5, amplitude * limit)
+            left = area.left() + index * step + (step - width) / 2.0
+            bar = QRectF(left, center - height, width, height * 2)
+            radius = width / 2.0
+            painter.drawRoundedRect(bar, radius, radius)
+
+    def _draw_pulse(self, painter: QPainter, area: QRectF, center: float) -> None:
+        """Пульс: одна точка, которая дышит в такт голосу."""
+        painter.setPen(Qt.PenStyle.NoPen)
+        amplitude = self._history[-1] if self._history else 0.0
+        limit = area.height() / 2.0
+
+        # Ореол вокруг точки делает дыхание заметным, не увеличивая плашку.
+        halo = QColor(theme.METER_FILL)
+        halo.setAlpha(70)
+        painter.setBrush(QBrush(halo))
+        outer = max(2.0, limit * (0.45 + 0.55 * amplitude))
+        painter.drawEllipse(QPointF(area.center().x(), center), outer, outer)
+
+        painter.setBrush(QBrush(QColor(theme.METER_FILL)))
+        inner = max(1.5, limit * (0.22 + 0.28 * amplitude))
+        painter.drawEllipse(QPointF(area.center().x(), center), inner, inner)
 
     def _edge(self, area: QRectF, center: float, upward: bool) -> list[QPointF]:
         """Точки одного края волны."""

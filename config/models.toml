@@ -37,13 +37,18 @@ notes = "Ворота для голосовой активации: без ре�
 
 # Имена записей совпадают с именами моделей onnx-asr: реестр и движок
 # обязаны говорить об одном и том же.
+# Модели лежат обычной папкой, а не в кэше Hugging Face: тот хранит каждый
+# файл дважды, потому что Windows без прав на символические ссылки копирует
+# его в снимок. Обычная папка занимает вдвое меньше и переносится на машину
+# без интернета простым копированием.
 [[models]]
 id = "gigaam-v3-e2e-ctc"
 title = "GigaAM-v3 E2E CTC (int8)"
 purpose = "asr"
 presets = ["light"]
-kind = "hub"
+kind = "files"
 repo = "istupakov/gigaam-v3-onnx"
+relative_path = "asr/gigaam-v3-e2e-ctc"
 patterns = [
     "config.json",
     "v3_e2e_ctc.int8.onnx",
@@ -59,8 +64,9 @@ id = "gigaam-v3-e2e-rnnt"
 title = "GigaAM-v3 E2E RNN-T (int8)"
 purpose = "asr"
 presets = ["standard", "quality"]
-kind = "hub"
+kind = "files"
 repo = "istupakov/gigaam-v3-onnx"
+relative_path = "asr/gigaam-v3-e2e-rnnt"
 patterns = [
     "config.json",
     "v3_e2e_rnnt_encoder.int8.onnx",
@@ -141,12 +147,21 @@ relative_path = "llm/Qwen3-8B-Q4_K_M.gguf"
 size_bytes = 5_027_783_488
 notes = "Требует поочерёдной загрузки с распознаванием на 6 ГБ видеопамяти."
 
+# Без сервера языковая модель бесполезна: перевод и режим «Инструкция»
+# молча деградируют до очистки правилами. Поэтому он не «ставится вручную»,
+# а загружается вместе с остальным.
+#
+# Взята сборка на Vulkan, а не на CUDA: она ускоряется на любой современной
+# видеокарте, весит 33 МБ вместо 600 и не требует ставить CUDA Toolkit.
+# Внутри архива есть и процессорные библиотеки, поэтому машина без видеокарты
+# тоже заработает, просто медленнее.
 [[models]]
 id = "llama-server"
-title = "llama-server (CUDA)"
+title = "llama-server (Vulkan)"
 purpose = "runtime"
 presets = ["standard", "quality"]
-kind = "manual"
+kind = "zip"
+url = "https://github.com/ggml-org/llama.cpp/releases/download/b10273/llama-b10273-bin-win-vulkan-x64.zip"
 relative_path = "runtime/llama.cpp"
-size_bytes = 0
-notes = "Официальная Windows-сборка llama.cpp. Либо укажите адрес уже работающего Ollama или LM Studio в настройках."
+size_bytes = 34_095_552
+notes = "Локальный сервер языковой модели. Можно не ставить, если в настройках указан адрес работающего Ollama или LM Studio."

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import (
     QComboBox,
+    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
     QLabel,
@@ -16,6 +17,7 @@ from voiceflow.core.audio.devices import list_input_devices
 from voiceflow.core.models import ModelManager, list_presets
 from voiceflow.core.settings.schema import ASR_ENGINES, Settings
 from voiceflow.ui.formatting import human_size
+from voiceflow.ui.hints import RECOGNITION
 from voiceflow.ui.settings_window.common import SettingsTab
 
 ENGINE_TITLES = {
@@ -31,6 +33,7 @@ LANGUAGE_MODE_TITLES = {
 
 
 class RecognitionTab(SettingsTab):
+    hints = RECOGNITION
     # Микрофон хранится в разделе audio, поэтому сброс затрагивает оба раздела.
     sections = ("recognition", "audio")
 
@@ -51,8 +54,18 @@ class RecognitionTab(SettingsTab):
         self.refresh_devices()
         refresh = QPushButton("Обновить список")
         refresh.clicked.connect(self.refresh_devices)
+
+        # Тихий микрофон — частая причина плохого распознавания, и системную
+        # громкость записи не все находят. Даём ручку здесь же.
+        self.gain = QDoubleSpinBox()
+        self.gain.setRange(0.5, 6.0)
+        self.gain.setSingleStep(0.5)
+        self.gain.setDecimals(1)
+        self.gain.setSuffix(" ×")
+
         source_form.addRow("Микрофон", self.device)
         source_form.addRow("", refresh)
+        source_form.addRow("Усиление", self.gain)
         layout.addWidget(source)
 
         engine_box = QGroupBox("Движок и язык")
@@ -149,6 +162,7 @@ class RecognitionTab(SettingsTab):
         self.refresh_devices()
         index = self.device.findData(settings.audio.device_id)
         self.device.setCurrentIndex(index if index >= 0 else 0)
+        self.gain.setValue(settings.audio.gain)
 
         recognition = settings.recognition
         self._select(self.engine, recognition.engine, "auto")
@@ -164,6 +178,7 @@ class RecognitionTab(SettingsTab):
         settings.audio.device_name = (
             "" if device_id is None else self.device.currentText().replace(" (по умолчанию)", "")
         )
+        settings.audio.gain = float(self.gain.value())
 
         recognition = settings.recognition
         recognition.engine = str(self.engine.currentData())

@@ -7,10 +7,12 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QObject, Signal
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
+from voiceflow.core.models.presets import list_presets
 from voiceflow.core.state import AppState
+from voiceflow.core.text.modes import STEPS
 from voiceflow.ui import icons, theme
 
 
@@ -25,6 +27,10 @@ class TrayIcon(QObject):
     settings_requested = Signal()
     diagnostics_requested = Signal()
     quit_requested = Signal()
+    #: Шаг обработки включён или выключен из меню: идентификатор и состояние.
+    step_toggled = Signal(str, bool)
+    #: Выбран пресет качества.
+    preset_selected = Signal(str)
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -51,8 +57,36 @@ class TrayIcon(QObject):
         self._overlay_action = QAction("Скрыть плашку", self._menu)
         self._overlay_action.triggered.connect(lambda: self.toggle_overlay_requested.emit())
 
-        # Что делает обработка — видно сразу, менять её нужно в настройках:
-        # набор шагов задаётся галочками, а не выбором одного режима.
+        # Шаги обработки переключаются прямо здесь: это самое частое действие,
+        # и ради него открывать окно настроек незачем.
+        self._steps_menu = QMenu("Обработка", self._menu)
+        self._step_actions: dict[str, QAction] = {}
+        for step in STEPS:
+            action = QAction(step.title, self._steps_menu)
+            action.setCheckable(True)
+            action.setToolTip(step.description)
+            action.triggered.connect(
+                lambda checked, step_id=step.id: self.step_toggled.emit(step_id, checked)
+            )
+            self._steps_menu.addAction(action)
+            self._step_actions[step.id] = action
+
+        # Пресет меняет сразу и движок, и участие языковой модели.
+        self._preset_menu = QMenu("Качество", self._menu)
+        self._preset_group = QActionGroup(self._preset_menu)
+        self._preset_group.setExclusive(True)
+        self._preset_actions: dict[str, QAction] = {}
+        for preset in list_presets():
+            action = QAction(preset.title, self._preset_menu)
+            action.setCheckable(True)
+            action.setToolTip(preset.summary)
+            action.triggered.connect(
+                lambda checked, preset_id=preset.id: self.preset_selected.emit(preset_id)
+            )
+            self._preset_group.addAction(action)
+            self._preset_menu.addAction(action)
+            self._preset_actions[preset.id] = action
+
         self._steps_action = QAction("Обработка: —", self._menu)
         self._steps_action.setEnabled(False)
 
@@ -77,6 +111,8 @@ class TrayIcon(QObject):
         self._menu.addAction(self._overlay_action)
         self._menu.addSeparator()
         self._menu.addAction(self._steps_action)
+        self._menu.addMenu(self._steps_menu)
+        self._menu.addMenu(self._preset_menu)
         self._menu.addSeparator()
         self._menu.addAction(self._history_action)
         self._menu.addAction(self._settings_action)
@@ -129,6 +165,30 @@ class TrayIcon(QObject):
     def set_steps(self, description: str) -> None:
         """Показывает, какие шаги обработки включены."""
         self._steps_action.setText(f"Обработка: {description}")
+
+    def set_step_states(self, enabled: dict[str, bool]) -> None:
+        """Отмечает включённые шаги в подменю."""
+        for step_id, action in self._step_actions.items():
+            action.setChecked(bool(enabled.get(step_id)))
+
+    def set_preset(self, preset: str) -> None:
+        """Отмечает выбранный пресет."""
+        action = self._preset_actions.get(preset)
+        if action is not None:
+            action.setChecked(True)
+
+    def set_step_available(self, step_id: str, available: bool, reason: str = "") -> None:
+        """Гасит шаг, который сейчас не сработает.
+
+        Перевод и «Инструкция» без языковой модели молча ничего не делают —
+        честнее показать это в меню, чем дать включить впустую.
+        """
+        action = self._step_actions.get(step_id)
+        if action is None:
+            return
+        action.setEnabled(available)
+        if not available and reason:
+            action.setToolTip(reason)
 
     def notify(self, title: str, message: str, error: bool = False) -> None:
         """Всплывающее уведомление. Только для ошибок и долгих операций."""

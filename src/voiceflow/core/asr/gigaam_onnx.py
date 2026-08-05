@@ -14,12 +14,18 @@ MIT, а на процессоре она работает более чем в �
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-from voiceflow.core.asr.base import EngineInfo, ModelNotReadyError, Transcriber
-from voiceflow.core.modelstore import repo_has_files
+from voiceflow import paths
+from voiceflow.core.asr.base import (
+    EngineInfo,
+    ModelNotReadyError,
+    Transcriber,
+    inference_threads,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +43,8 @@ QUANTIZATION_BY_DEVICE: dict[str, str | None] = {
     "cuda": None,
 }
 
-#: Репозитории моделей. Держим у себя, а не читаем из внутренностей onnx-asr:
-#: их структура меняется между версиями, а список нужен ещё и вкладке «Модели».
+#: Репозиторий, откуда реестр берёт файлы. Держим у себя, а не читаем из
+#: внутренностей onnx-asr: их структура меняется между версиями.
 MODEL_REPOS: dict[str, str] = {
     "gigaam-v3-e2e-ctc": "istupakov/gigaam-v3-onnx",
     "gigaam-v3-e2e-rnnt": "istupakov/gigaam-v3-onnx",
@@ -54,6 +60,24 @@ MODEL_FILE_PREFIX: dict[str, str] = {
     "gigaam-v3-ctc": "v3_ctc",
     "gigaam-v3-rnnt": "v3_rnnt",
 }
+
+
+def _session_options() -> object | None:
+    """Ограничивает распознавание частью ядер.
+
+    По умолчанию onnxruntime занимает все логические ядра и на время
+    распознавания подвешивает систему целиком — вплоть до рывков курсора.
+    Свободные ядра важнее секунды выигрыша: работа и так идёт в фоне.
+    """
+    try:
+        import onnxruntime
+    except ImportError:
+        return None
+
+    options: Any = onnxruntime.SessionOptions()
+    options.intra_op_num_threads = inference_threads()
+    options.inter_op_num_threads = 1
+    return options  # type: ignore[no-any-return]
 
 
 class GigaAmTranscriber(Transcriber):
@@ -86,20 +110,27 @@ class GigaAmTranscriber(Transcriber):
             return False
         return True
 
+    def model_dir(self) -> Path:
+        """Папка с файлами модели."""
+        return paths.models_dir() / "asr" / self.model_id
+
     def is_model_ready(self) -> bool:
         """Проверяет наличие файлов весов на диске, не загружая модель."""
         if not self.is_backend_available():
             return False
 
-        repo = MODEL_REPOS.get(self.model_id)
         prefix = MODEL_FILE_PREFIX.get(self.model_id)
-        if repo is None or prefix is None:
-            logger.debug("Для модели %s не описан репозиторий", self.model_id)
+        if prefix is None:
+            logger.debug("Для модели %s не описан состав файлов", self.model_id)
             return False
 
-        # В одном репозитории лежат все варианты модели, поэтому проверяем
-        # файлы именно своего: и веса, и словарь.
-        return repo_has_files(repo, (f"{prefix}*.onnx", f"{prefix}_vocab.txt"))
+        folder = self.model_dir()
+        if not folder.is_dir():
+            return False
+        # Нужны и веса, и словарь: без словаря модель загрузится, но выдаст
+        # бессмыслицу.
+        has_weights = any(folder.glob(f"{prefix}*.onnx"))
+        return has_weights and (folder / f"{prefix}_vocab.txt").is_file()
 
     def _providers(self) -> list[str]:
         if self.device == "cuda":
@@ -112,8 +143,10 @@ class GigaAmTranscriber(Transcriber):
         try:
             return onnx_asr.load_model(
                 self.model_id,
+                path=str(self.model_dir()),
                 quantization=QUANTIZATION_BY_DEVICE.get(self.device),
                 providers=self._providers(),
+                sess_options=_session_options(),
             )
         except Exception as exc:
             raise ModelNotReadyError(

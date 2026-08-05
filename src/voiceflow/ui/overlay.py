@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QPoint, QRectF, Qt, Signal
+from PySide6.QtCore import QPoint, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -22,19 +22,23 @@ from PySide6.QtGui import (
     QPaintEvent,
     QPen,
 )
-from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 
 from voiceflow.core.settings.schema import OverlaySettings
 from voiceflow.core.state import AppState
 from voiceflow.platform.base import get_window_styler
 from voiceflow.ui import theme
 from voiceflow.ui.geometry import Placement, ScreenRect, clamp_to_screen, resolve_placement
+from voiceflow.ui.widgets.elided_label import ElidedLabel
 from voiceflow.ui.widgets.wave_meter import WaveMeter
 
 logger = logging.getLogger(__name__)
 
 #: Смещение мыши, начиная с которого нажатие считается перетаскиванием.
 DRAG_THRESHOLD_PX = 6
+
+#: Сколько держится подтверждение результата на плашке.
+FLASH_SECONDS = 2.0
 
 
 def available_screens() -> list[ScreenRect]:
@@ -86,6 +90,12 @@ class OverlayWindow(QWidget):
         self._window_origin: QPoint | None = None
         self._dragged = False
 
+        self._flash_text = ""
+        self._flash_color = ""
+        self._flash_timer = QTimer(self)
+        self._flash_timer.setSingleShot(True)
+        self._flash_timer.timeout.connect(self._end_flash)
+
         self.setWindowFlags(
             Qt.WindowType.Tool
             | Qt.WindowType.FramelessWindowHint
@@ -97,7 +107,7 @@ class OverlayWindow(QWidget):
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setCursor(Qt.CursorShape.OpenHandCursor)
 
-        self._label = QLabel(self)
+        self._label = ElidedLabel(parent=self)
         self._label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self._label.setStyleSheet(f"color: {theme.TEXT}; background: transparent;")
         self._label.setObjectName("overlayLabel")
@@ -204,20 +214,57 @@ class OverlayWindow(QWidget):
     def set_level(self, rms: float, peak: float) -> None:
         self._meter.set_level(rms, peak)
 
+    def set_indicator(self, style_name: str) -> None:
+        """Меняет вид индикатора микрофона."""
+        self._meter.set_style(style_name)
+
     def _refresh_label(self) -> None:
+        if self._flash_text:
+            self._set_label(self._flash_text)
+            return
+
         style = theme.style_for(self._state)
         if self._state is AppState.PROCESSING and self._detail:
             # Для обработки в пояснении приходит режим: показываем «Перевожу».
-            parts = [theme.processing_label(self._detail)]
+            text = theme.processing_label(self._detail)
+        elif self._timer_text:
+            text = f"{style.label}  {self._timer_text}"
         else:
-            parts = [style.label]
-            if self._timer_text:
-                parts.append(self._timer_text)
-            elif self._detail:
-                parts.append(self._detail)
-        text = "  ".join(parts)
+            # Пояснение к состоянию бывает длинным — «Активно другое окно,
+            # вставка отменена». На плашке шириной в двести точек от такой
+            # строки остаётся обрубок, поэтому подробности живут в подсказке
+            # и в отдельном окне, а здесь только название состояния.
+            text = style.label
+        self._set_label(text, full=self._detail)
+
+    def _set_label(self, text: str, full: str = "") -> None:
+        """Ставит подпись. Сокращает её при отрисовке сама :class:`ElidedLabel`."""
         self._label.setText(text)
-        self.setToolTip(f"VoiceFlow — {text}")
+        detail = f"{text}. {full}" if full and full != text else text
+        self.setToolTip(f"VoiceFlow — {detail}")
+
+    # ------------------------------------------------------------------ #
+    # Кратковременная подсветка
+    # ------------------------------------------------------------------ #
+
+    def flash(self, text: str, color: str, seconds: float = FLASH_SECONDS) -> None:
+        """Показывает итог: зелёное «Готово» после вставки и подобное.
+
+        Через заданное время плашка сама возвращается к текущему состоянию —
+        человеку нужен видимый признак, что работа закончилась удачно, но
+        оставлять его насовсем нельзя.
+        """
+        self._flash_text = text
+        self._flash_color = color
+        self._refresh_label()
+        self.update()
+        self._flash_timer.start(int(seconds * 1000))
+
+    def _end_flash(self) -> None:
+        self._flash_text = ""
+        self._flash_color = ""
+        self._refresh_label()
+        self.update()
 
     # ------------------------------------------------------------------ #
     # Показ без кражи фокуса
@@ -337,7 +384,8 @@ class OverlayWindow(QWidget):
         dot_x = theme.scaled(9, self._scale)
         dot_y = (self.height() - dot_size) / 2.0
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(QColor(theme.style_for(self._state).color)))
+        color = self._flash_color or theme.style_for(self._state).color
+        painter.setBrush(QBrush(QColor(color)))
         painter.drawEllipse(QRectF(dot_x, dot_y, dot_size, dot_size))
 
         painter.end()

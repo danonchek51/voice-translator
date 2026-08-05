@@ -28,7 +28,7 @@ from voiceflow import paths
 logger = logging.getLogger(__name__)
 
 #: Допустимые способы доставки.
-KINDS = ("hub", "whisper", "file", "url", "zip", "manual")
+KINDS = ("files", "hub", "whisper", "file", "url", "zip", "manual")
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,15 +131,15 @@ def validate_spec(spec: ModelSpec) -> str:
     if spec.kind not in KINDS:
         return f"неизвестный способ доставки «{spec.kind}»"
 
-    if spec.kind in ("hub", "whisper", "file") and not spec.repo:
+    if spec.kind in ("files", "hub", "whisper", "file") and not spec.repo:
         return "не задан репозиторий"
-    if spec.kind == "hub" and not spec.patterns:
+    if spec.kind in ("files", "hub") and not spec.patterns:
         return "не заданы имена файлов"
     if spec.kind == "file" and not spec.patterns:
         return "не задано имя файла"
     if spec.kind in ("url", "zip") and not spec.url:
         return "не задана ссылка"
-    if spec.kind in ("file", "url", "zip", "manual") and not spec.relative_path:
+    if spec.kind in ("files", "file", "url", "zip", "manual") and not spec.relative_path:
         return "не задан путь внутри каталога моделей"
     return ""
 

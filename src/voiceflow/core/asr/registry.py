@@ -139,6 +139,36 @@ class TranscriberRegistry:
             self._get(name, recognition.preset, device).info() for name in ENGINE_FACTORIES
         ]
 
+    def preload(self) -> threading.Thread | None:
+        """Заранее поднимает модель в фоне.
+
+        Первая загрузка занимает пять-семь секунд, и без этого она случалась
+        ровно в момент окончания первой записи — человек уже сказал фразу и
+        ждёт текст, а вместо этого получает паузу. Приложение только что
+        стартовало и всё равно ничем не занято, поэтому платим тогда.
+
+        Возвращает поток — он нужен тестам; ошибки сюда не выходят: модели
+        может не быть, и это штатный случай, о котором скажет мастер.
+        """
+
+        def work() -> None:
+            from voiceflow.platform.base import lower_current_thread_priority
+
+            lower_current_thread_priority()
+            try:
+                resolved = self.resolve()
+                resolved.transcriber.load()
+            except TranscriberError as exc:
+                logger.info("Предзагрузка распознавания пропущена: %s", exc)
+            except Exception:
+                logger.exception("Предзагрузка распознавания не удалась")
+            else:
+                logger.info("Модель распознавания готова заранее")
+
+        thread = threading.Thread(target=work, name="voiceflow-preload", daemon=True)
+        thread.start()
+        return thread
+
     def unload_all(self) -> None:
         """Освобождает память и видеопамять — например, перед запуском LLM."""
         with self._lock:

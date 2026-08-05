@@ -7,6 +7,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import ClassVar
+
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QVBoxLayout, QWidget
 
@@ -20,7 +23,31 @@ class SettingsTab(QWidget):
     #: Пусто — вкладка не хранит настроек (например, «Инструкции»).
     sections: tuple[str, ...] = ()
 
+    #: Подсказки полей вкладки: имя атрибута -> текст. Берутся из
+    #: :mod:`voiceflow.ui.hints`, где собраны все объяснения разом.
+    hints: ClassVar[Mapping[str, str]] = {}
+
     reset_requested = Signal()
+
+    def hint_targets(self) -> dict[str, QWidget]:
+        """Поля, которые лежат не в атрибутах, а в словарях вкладки."""
+        return {}
+
+    def apply_hints(self) -> list[str]:
+        """Расставляет подсказки по полям вкладки.
+
+        Возвращает имена полей, для которых подсказки не нашлось: тест по
+        этому списку следит, что новая настройка не осталась без объяснения.
+        """
+        extra = self.hint_targets()
+        missing: list[str] = []
+        for name, text in self.hints.items():
+            widget = getattr(self, name, None) or extra.get(name)
+            if widget is None:
+                missing.append(name)
+                continue
+            widget.setToolTip(text)
+        return missing
 
     def load_from(self, settings: Settings) -> None:
         """Показывает текущие значения. Вызывается при каждом открытии окна."""
