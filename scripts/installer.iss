@@ -5,7 +5,7 @@
 ; установщик упаковывает готовый каталог dist\VoiceFlow.
 
 #define AppName "VoiceFlow"
-#define AppVersion "0.1.0"
+#define AppVersion "0.2.0"
 #define AppPublisher "VoiceFlow"
 #define AppExeName "VoiceFlow.exe"
 
@@ -37,7 +37,12 @@ Name: "autostart"; Description: "Запускать вместе с Windows"; Gr
 [Files]
 ; portable.txt исключаем: в установленной версии данные идут в профиль,
 ; а маркер увёл бы их в папку программы, куда нет прав на запись.
-Source: "..\dist\VoiceFlow\*"; DestDir: "{app}"; Excludes: "portable.txt"; \
+;
+; userdata исключаем обязательно: в каталоге сборки лежат настройки, история
+; и загруженные модели разработчика. Без этого установщик разросся до
+; двух с половиной гигабайт и раздавал бы чужие личные данные.
+Source: "..\dist\VoiceFlow\*"; DestDir: "{app}"; \
+    Excludes: "portable.txt,userdata,userdata\*"; \
     Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]

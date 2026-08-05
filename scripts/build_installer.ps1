@@ -4,17 +4,23 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
-$Iscc = @(
-    "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-    "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
-) | Where-Object { Test-Path $_ } | Select-Object -First 1
+# Ищем любую установленную версию: жёсткая привязка к шестой оставляла
+# сборку без установщика после обновления Inno Setup.
+$Iscc = @("${env:ProgramFiles(x86)}", "$env:ProgramFiles") |
+    Where-Object { $_ -and (Test-Path $_) } |
+    ForEach-Object { Get-ChildItem $_ -Filter "Inno Setup*" -Directory -ErrorAction SilentlyContinue } |
+    Sort-Object Name -Descending |
+    ForEach-Object { Join-Path $_.FullName "ISCC.exe" } |
+    Where-Object { Test-Path $_ } |
+    Select-Object -First 1
 
 if (-not $Iscc) {
-    Write-Host "Inno Setup 6 не найден." -ForegroundColor Red
-    Write-Host "Скачайте его с https://jrsoftware.org/isdl.php или соберите только portable-архив:"
+    Write-Host "Inno Setup не найден." -ForegroundColor Red
+    Write-Host "Скачайте его с https://jrsoftware.org/isdl.php или соберите только архив:"
     Write-Host "  .\scripts\build_portable.ps1"
     exit 1
 }
+Write-Host "Компилятор: $Iscc" -ForegroundColor DarkGray
 
 if (-not (Test-Path (Join-Path $Root "dist\VoiceFlow\VoiceFlow.exe"))) {
     Write-Host "Сначала собираю portable-версию..." -ForegroundColor Cyan
